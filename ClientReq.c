@@ -2,14 +2,18 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <ctype.h>
+#include <ctype.h>		//lib per funzione upper()
+
+#include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #define DIM_STRING 255 //dimensione massima della stringa--> scelta progettuale 
 
-void stringInput(char* msg, char* str, int dim_string); //funzione che permette l'inserimento degli input
-bool isServiceValid(char *str); //funzione che controllo il service (confronto stringhe)
+void stringInput(char* msg, char* str, int dim_string); //funzione per inserimento stringhe input
+bool isServiceValid(char *str); 						//funzione che controlla il service (confronto stringhe)
 
-struct request
+struct Request
 {
 	char id[DIM_STRING + 1];
 	char service[DIM_STRING + 1];
@@ -17,7 +21,7 @@ struct request
 
 int main(void)
 {
-	struct request r1;
+	struct Request clientData;
 	char id[DIM_STRING + 1] = {""};
 	char service[DIM_STRING + 1] = {""};
 
@@ -31,11 +35,43 @@ int main(void)
 	}
 	while (!isServiceValid(service));
 	
-	strncpy(r1.id,id, DIM_STRING);
-	strncpy(r1.service,service, DIM_STRING);
+	strncpy(clientData.id,id, DIM_STRING);
+	strncpy(clientData.service,service, DIM_STRING);
 
-	printf("\nUser: %s\n",r1.id);
-	printf("Service: %s\n",r1.service);
+	printf("\nUser: %s\n",clientData.id);
+	printf("Service: %s\n",clientData.service);
+
+	// prova struct fifo
+
+	struct Request *provastruct= (struct Request*)malloc(sizeof(struct Request));
+	strcpy(provastruct->id, "culo");
+	strcpy(provastruct->service, "stampa");
+
+	//--------------- APERTURA FIFOCLIENT
+	int fifoclient = open("fifoclient", O_WRONLY); //Returns file descriptor on success, or -1 on error. Si apre in sola scrittura, tanto il client deve solo scrivere
+	if(fifoclient == -1)
+		printf("Unable to open fifoclient");
+	
+	//--- write
+    if(write(fifoclient, provastruct, sizeof(*provastruct)) == -1)    //4 = sizeof(int)
+        printf("Can't write\n");
+
+    close(fifoclient);
+
+	//--------------- APERTURA FIFOCLIENT
+	/*int fifoclient = open("fifoclient", O_WRONLY); //Returns file descriptor on success, or -1 on error. Si apre in sola scrittura, tanto il client deve solo scrivere
+	if(fifoclient == -1)
+		printf("Unable to open fifoclient");
+	
+	//--- write
+    if(write(fifoclient, clientData, sizeof(clientData)) == -1)    //4 = sizeof(int)
+        printf("Can't write\n");
+
+    close(fifoclient);*/
+
+
+	int dim=sizeof(clientData);
+	printf("La dimensione di rclientData1 è: %i\n",dim);
 	return 0;
 }
 
