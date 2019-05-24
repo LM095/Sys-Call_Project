@@ -19,9 +19,14 @@ struct Request
 	char service[DIM_STRING + 1];
 };
 
+struct Response
+{
+	int key;
+};
+
 int main(void)
 {
-	struct Request clientData;
+	struct Request clientRequest;
 	char id[DIM_STRING + 1] = {""};
 	char service[DIM_STRING + 1] = {""};
 
@@ -35,44 +40,79 @@ int main(void)
 	}
 	while (!isServiceValid(service));
 	
-	strncpy(clientData.id,id, DIM_STRING);
-	strncpy(clientData.service,service, DIM_STRING);
+	strncpy(clientRequest.id,id, DIM_STRING);
+	strncpy(clientRequest.service,service, DIM_STRING);
 
-	printf("\nUser: %s\n",clientData.id);
-	printf("Service: %s\n",clientData.service);
-
-	// prova struct fifo
-
-	struct Request *provastruct= (struct Request*)malloc(sizeof(struct Request));
-	strcpy(provastruct->id, "culo");
-	strcpy(provastruct->service, "stampa");
+	printf("\nUser: %s\n",clientRequest.id);
+	printf("Service: %s\n",clientRequest.service);
 
 	//--------------- APERTURA FIFOCLIENT
-	int fifoclient = open("fifoclient", O_WRONLY); //Returns file descriptor on success, or -1 on error. Si apre in sola scrittura, tanto il client deve solo scrivere
-	if(fifoclient == -1)
-		printf("Unable to open fifoclient");
+
+	//inizio pezzo nuovo 24 maggio
+
+    // Step-1: The client makes a FIFO
+	// make a FIFO with the following permissions:
+    // user:  read, write
+    // group: write
+    // other: no permission
+    if (mkfifo("FIFOCLIENT", S_IRUSR | S_IWUSR | S_IWGRP) == -1)
+    	printf("mkfifo failed");
 	
-	//--- write
-    if(write(fifoclient, provastruct, sizeof(*provastruct)) == -1)    //4 = sizeof(int)
-        printf("Can't write\n");
+	printf("<Client> FIFO %s created!\n", "FIFOCLIENT");
 
-    close(fifoclient);
+    // Step-2: The client opens the server's FIFO to send a Request
+	printf("<Client> opening FIFO %s...\n", "FIFOSERVER");
+    int serverFIFO = open("FIFOSERVER", O_WRONLY);		//in sola scrittura
+    if (serverFIFO == -1)
+        printf("open failed");
 
-	//--------------- APERTURA FIFOCLIENT
+	// Step-3: The client sends a Request through the server's FIFO
+    printf("<Client> sending %s\n", clientRequest.id);
+    if (write(serverFIFO, &clientRequest,
+        sizeof(struct Request)) != sizeof(struct Request))
+        printf("write failed");
+
+	// Step-4: The client opens its FIFO to get a Response
+    int clientFIFO = open("FIFOCLIENT", O_RDONLY);		//in sola lettura
+    if (clientFIFO == -1)
+        printf("open failed");
+
+    // Step-5: The client reads a Response from the server
+    struct Response serverResponse;
+    if (read(clientFIFO, &serverResponse,
+        sizeof(struct Response)) != sizeof(struct Response))
+        printf("read failed");
+
+    // Step-6: The client prints the result on terminal
+    printf("<Client> The server sent the result: %d\n", serverResponse.key);
+
+    // Step-7: The client closes its FIFO
+    if (close(serverFIFO) != 0 || close(clientFIFO) != 0)
+        printf("close failed");
+
+    // Step-8: The client removes its FIFO from the file system
+    if (unlink("FIFOCLIENT") != 0)
+        printf("unlink failed");
+
+	//fine pezzo nuovo 24 maggio
+	
+
+
+
+	//fifo prova
 	/*int fifoclient = open("fifoclient", O_WRONLY); //Returns file descriptor on success, or -1 on error. Si apre in sola scrittura, tanto il client deve solo scrivere
 	if(fifoclient == -1)
 		printf("Unable to open fifoclient");
 	
 	//--- write
-    if(write(fifoclient, clientData, sizeof(clientData)) == -1)    //4 = sizeof(int)
+    if(write(fifoclient, &clientRequest, sizeof(clientRequest)) == -1)    //riguardare il sizeof forse ci vuole qualche asterisco
         printf("Can't write\n");
 
     close(fifoclient);*/
 
-
-	int dim=sizeof(clientData);
-	printf("La dimensione di rclientData1 è: %i\n",dim);
-	return 0;
+	/*int dim=sizeof(clientRequest);
+	printf("La dimensione di clientRequest è: %i\n",dim);
+	return 0;*/
 }
 
 
