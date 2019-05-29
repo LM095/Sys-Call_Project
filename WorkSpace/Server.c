@@ -235,12 +235,6 @@ int hashFunction(char *service)
         i++;
     }
 
-    DA 33 A 99
-    STccc
-    8384999999 = 
-unsigned long int
- [0,4294967295]
-
     return key;    
 }
 

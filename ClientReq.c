@@ -87,7 +87,7 @@ int main(void)
     printf("<Client> The server sent the result: %d\n", serverResponse.key);
 
     // Step-7: The client closes its FIFO
-    if (close(serverFIFO) != 0 || close(clientFIFO) != 0)
+	if (close(serverFIFO) != 0 || close(clientFIFO) != 0)
         printf("close failed");
 
     // Step-8: The client removes its FIFO from the file system
