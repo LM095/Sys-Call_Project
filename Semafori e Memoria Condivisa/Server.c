@@ -32,7 +32,7 @@ struct Response
 	unsigned int key;
 };
 
-struct keyTable
+struct KeyTable
 {
     char user[DIM_STRING + 1];
     unsigned int key;
@@ -56,9 +56,9 @@ bool isServiceValid(char *str);
 void toUpperCase(char *str);
 unsigned int keyEncrypter(char *service);
 int keyDecrypter(unsigned int key);
-unsigned int updateTable(struct Request request);
+unsigned int updateTable(struct Request request, int sem_id);
 unsigned int keyGenerator(char *service);
-bool isUniqueKey(unsigned int key);
+bool isUniqueKey(unsigned int key,int semid);
 
 char *path2ServerFIFO = "FIFOSERVER";
 char *baseClientFIFO = "FIFOCLIENT.";
@@ -105,19 +105,19 @@ int main (void)
     printf("<Server> creating a semaphore...\n");
     int semid = create_sem_set(SEM_KEY);
 
-    //prende il controllo del semaforo, ovvero lo setta 0
+    //setto il semaforo a 1
     printf("<Server> inizialize the semaphore...\n");
-    semOp(semid, 0, 0);
+    semOp(semid, 0, 1);
 
     //-----CREAZIONE MEM CONDIVISA -----
 
     //allocate a shared memory segment
     printf("<Server> allocating a shared memory segment...\n");
-    int shmidServer = alloc_shared_memory(SHM_KEY, sizeof(struct keyTable) * TABLE_SIZE);
+    int shmidServer = alloc_shared_memory(SHM_KEY, sizeof(struct KeyTable) * TABLE_SIZE);
     
     // attach the shared memory segment, ho ottenuto il puntantore alla zona di memoria condivisa
     printf("<Server> attaching the shared memory segment...\n");
-    struct keyTable *k = (struct keyTable*)get_shared_memory(shmidServer, 0);
+    struct KeyTable *k = (struct KeyTable*)get_shared_memory(shmidServer, 0);
 
     do{
         printf("<Server> waiting for a Request...\n");
@@ -133,21 +133,16 @@ int main (void)
             printf("<Server> it looks like I did not receive a valid request\n");
         else 
         {
-            key = updateTable(clientRequest);
+            key = updateTable(clientRequest, semid);
             sendResponse(&clientRequest, key);
         }
+        
         
 
     }
     while (byteRead != -1);
 
     
-
-
-
-
-
-
 
     // caught SIGTERM, run quit() to remove the FIFO and
     // terminate the process.
@@ -175,7 +170,7 @@ void quit()
     _exit(0);
 }
 
-unsigned int updateTable(struct Request request)
+unsigned int updateTable(struct Request request, int semid)
 {
     unsigned int key = 0;
 
@@ -186,11 +181,11 @@ unsigned int updateTable(struct Request request)
         else
             return 0;   //service not valid, key = 0
     }
-    while(!isUniqueKey(key)); //funzione che checkka in memoria condivisa e torna un bool per vedere se la chiave esiste
+    while(!isUniqueKey(key, semid)); //funzione che checkka in memoria condivisa e torna un bool per vedere se la chiave esiste
 
     //qua siamo sicuri che la chiave è univoca
     //la inserisco nella tabella con timestamp e id
-
+    //+1 sem
     return key;
 }
 
@@ -202,10 +197,19 @@ unsigned int updateTable(struct Request request)
     This function access to the shared memory to check if the key is
     unique. It uses an already created semaphore (by the server).
 */
-bool isUniqueKey(unsigned int key)
+bool isUniqueKey(unsigned int key, int semid)
 {
+    int i = 0;
+    //-1 sem
     //prendo il semaforo
+    semOp(semid, 0, -1);    //cerco di prendere il semaforo con -1
+
     //scorro tutta la memoria condivisa
+
+    for(i = 0; i < 1023; i = i + (sizeof(struct KeyTable)))
+    {
+        if(key = )
+    } 
     //torno true se è univoca
     //torno false se non lo è
 }

@@ -15,6 +15,7 @@
 #define DIM_STRING 255
 #define SHM_KEY 10
 #define SEM_KEY 20
+#define SHM_KEY2 15
 #define REQUEST 0
 
 /*
@@ -53,16 +54,24 @@ int main(void)
 {
     //allocate a shared memory segment
     printf("<Client> allocating a shared memory segment...\n");
-    int shmidClient = alloc_shared_memory(SHM_KEY, sizeof(struct Prova));
+    int shmidClient = alloc_shared_memory(SHM_KEY2, sizeof(struct Prova) * 1024);
     
     // attach the shared memory segment, ho ottenuto il puntantore alla zona di memoria condivisa
     printf("<Client> attaching the shared memory segment...\n");
-    struct Prova *p2 = (struct Prova*)get_shared_memory(shmidClient, 0);
-    printf("%i\n",p2->key);
-    p2->key = 0;
+    //struct Prova *p2 = (struct Prova*)get_shared_memory(shmidClient, 0);
+    struct Prova *p2[20];
+    
+    for(int i = 0; i< 20; i++)
+    {
+        p2[i] = (struct Prova*)get_shared_memory(shmidClient, 0);
+    }
+    //printf("%i\n",p2->key);
+    //p2->key = 0;
    
-    printf("%s\n", p2->name);
-    printf("%i\n",p2->key);
+    //printf("%s\n", p2->name);
+    //printf("%i\n",p2->key);
+    strcpy(p2[3]->name, "User3");
+    p2[3]->key = 1111523;
 
     printf("<Client> creating a semaphore set...\n");
     int semid = create_sem_set(SEM_KEY);

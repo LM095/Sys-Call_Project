@@ -24,6 +24,13 @@ c) rimuove i semafori utilizzati per la sincronizzazione con il Server
 c) infine, termina
 */
 
+/*
+ipcrm - m <id>      //chiude una mem cond
+ipcs                //status mem
+ipcrm - a           //chiude tutte le ipc attive
+??Ho fatto ipcrm shm ID
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/shm.h>
@@ -40,6 +47,7 @@ c) infine, termina
 
 #define DIM_STRING 255
 #define SHM_KEY 10
+#define SHM_KEY2 15
 #define SEM_KEY 20
 #define REQUEST 0
 
@@ -59,7 +67,8 @@ struct Prova
 // sta dentro la libreria shared_memory.h/c
 
 
-union semun {
+union semun 
+{
     int val;
     struct semid_ds * buf;
     unsigned short * array;
@@ -78,16 +87,45 @@ int main(void)
 {
     //allocate a shared memory segment
     printf("<Server> allocating a shared memory segment...\n");
-    int shmidServer = alloc_shared_memory(SHM_KEY, sizeof(struct Prova));
+    //int shmidServer = alloc_shared_memory(SHM_KEY, sizeof(struct Prova) * 1024);
+    int shmidServer2 = alloc_shared_memory(SHM_KEY2, sizeof(struct Prova) * 1024);
     
     // attach the shared memory segment, ho ottenuto il puntantore alla zona di memoria condivisa
     printf("<Server> attaching the shared memory segment...\n");
-    struct Prova *p = (struct Prova*)get_shared_memory(shmidServer, 0);
-    strcpy(p->name, "User1");
-    p->key = 12345;
-    printf("User: %s\n",p->name);
-    printf("La chiave inserita è: %i\n\n",p->key);
+    //struct Prova *p = (struct Prova*)get_shared_memory(shmidServer2, 0);
+    struct Prova *p[20];
+    
+    for(int i = 0; i< 20; i++)
+    {
+        p[i] = (struct Prova*)get_shared_memory(shmidServer2, 0);
+    }
+    //struct Prova p[20] = (struct Prova*)get_shared_memory(shmidServer2, 0);
+    
+    //deb
 
+        //char *mem = shmat(shmid2, (void*)0, 0); dove p è mem
+
+
+        // So, the mystruct type is at offset 0.
+        //struct Prova *structptr = (struct Prova*)p;
+
+        // Now we have a structptr, use an offset to get some other_type.
+        //other_type *other = (other_type*)(mem + structptr->offset_of_other_type);
+
+    //fine deb
+
+    strcpy(p[0]->name, "User1");
+    p[0]->key = 12345;
+    printf("User: %s\n",p[0]->name);
+    printf("La chiave inserita è: %i\n\n",p[0]->key);
+    
+
+
+    strcpy(p[1]->name, "User2");
+    p[1]->key = 6789;
+    printf("User2: %s\n",p[1]->name);
+    printf("La chiave2 inserita è: %i\n\n",p[1]->key);
+    
     // create a semaphore set
     printf("<Server> creating a semaphore set...\n");
     int semid = create_sem_set(SEM_KEY);
@@ -96,7 +134,10 @@ int main(void)
     printf("<Server> inizialize the semaphore...\n");
     semOp(semid, 0, -1);
 
-    printf("%i\n\n",p->key);
+    //printf("La chiave2 modificata dal client è: %i\n\n",p[1]->key);
+    printf("User3: %s\n",p[3]->name);
+    printf("La chiave3 inserita è: %i\n\n",p[3]->key);
+    
     //il server ha già la request del client, tramite fifo, quindi non deve leggere
     //da mem condivisa!
     return 0;
@@ -110,14 +151,14 @@ int create_sem_set(key_t semkey)
                                                                     //S_IRUSR: read for owner
                                                                     //S_IWUSR: write for owner
     if (semid == -1)
-        printf("semget failed");
+        printf("semget failed\n");
 
     // Initialize the semaphore set
     union semun arg;
     arg.val = 0;
 
     if (semctl(semid, 0, SETVAL, arg) == -1)
-        printf("semctl SETALL failed");
+        printf("semctl SETALL failed\n");
 
     return semid;
 }
@@ -133,7 +174,7 @@ void semOp (int semid, unsigned short sem_num, short sem_op)
 
 
     if (semop(semid, &sop, 1) == -1)
-        printf("semop failed");
+        printf("semop failed\n");
 }
 
 // sta dentro la libreria shared_memory.h/c
@@ -149,7 +190,9 @@ int alloc_shared_memory(key_t shmKey, size_t size)
         param3: flag per la creazione della mem
                 se la mem esiste già, si usano per un check sulla mem condivisa
     */
+    //int shmid = shmget(shmKey, size, IPC_CREAT | S_IRUSR | S_IWUSR);
     int shmid = shmget(shmKey, size, IPC_CREAT | S_IRUSR | S_IWUSR);
+    
     if (shmid == -1)
         printf("shmget failed");
 
