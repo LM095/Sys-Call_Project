@@ -32,7 +32,7 @@ struct Response
 	unsigned int key;
 };
 
-struct KeyTable
+struct keyTable
 {
     char user[DIM_STRING + 1];
     unsigned int key;
@@ -49,12 +49,16 @@ union semun
 ///////// FUNCTIONS DEFINITIONS /////////
 
 void quit();
-void sendResponse(struct Request *request);
+void sendResponse(struct Request *request, unsigned int key);
 bool isServiceValid(char *str);
-void stringInput(char* msg, char* str, int dim_string);
+//--- NON SERVE IN SERVER, O NO? ---
+//void stringInput(char* msg, char* str, int dim_string);
 void toUpperCase(char *str);
 unsigned int keyEncrypter(char *service);
 int keyDecrypter(unsigned int key);
+unsigned int updateTable(struct Request request);
+unsigned int keyGenerator(char *service);
+bool isUniqueKey(unsigned int key);
 
 char *path2ServerFIFO = "FIFOSERVER";
 char *baseClientFIFO = "FIFOCLIENT.";
@@ -66,9 +70,10 @@ int main (void)
 {
     struct Request clientRequest;
     int byteRead = -1;
+    unsigned int key = 0;
    
     printf("<Server> Making FIFO...\n");
-    // make a FIFO with the following permissions:
+    // FIFO with the following permissions:
     // user:  read, write
     // group: write
     // other: no permission
@@ -96,7 +101,7 @@ int main (void)
     
     /////////////////////// INZIO SINCRONIZZAZIONE ////////////////////////////////////////
 
-     // create a semaphore 
+    // create a semaphore 
     printf("<Server> creating a semaphore...\n");
     int semid = create_sem_set(SEM_KEY);
 
@@ -108,12 +113,11 @@ int main (void)
 
     //allocate a shared memory segment
     printf("<Server> allocating a shared memory segment...\n");
-    int shmidServer = alloc_shared_memory(SHM_KEY, sizeof(struct KeyTable) * TABLE_SIZE);
+    int shmidServer = alloc_shared_memory(SHM_KEY, sizeof(struct keyTable) * TABLE_SIZE);
     
     // attach the shared memory segment, ho ottenuto il puntantore alla zona di memoria condivisa
     printf("<Server> attaching the shared memory segment...\n");
-    struct KeyTable *k = (struct KeyTable*)get_shared_memory(shmidServer, 0);
-
+    struct keyTable *k = (struct keyTable*)get_shared_memory(shmidServer, 0);
 
     do{
         printf("<Server> waiting for a Request...\n");
@@ -129,10 +133,8 @@ int main (void)
             printf("<Server> it looks like I did not receive a valid request\n");
         else 
         {
-            //manca funzione per creare riga in tabella
-            //NuovaFunction(clientrequest)--> keyGenerator()-->keyEncrypter().
-            sendResponse(&clientRequest);
-            
+            key = updateTable(clientRequest);
+            sendResponse(&clientRequest, key);
         }
         
 
@@ -173,36 +175,67 @@ void quit()
     _exit(0);
 }
 
-void sendResponse(struct Request *clientRequest)
+unsigned int updateTable(struct Request request)
 {
-    struct Response serverResponse;
+    unsigned int key = 0;
+
+    do
+    {
+        if(isServiceValid(request.service))
+            key = keyEncrypter(request.service);  //calls keyEncrypter and returns the key
+        else
+            return 0;   //service not valid, key = 0
+    }
+    while(!isUniqueKey(key)); //funzione che checkka in memoria condivisa e torna un bool per vedere se la chiave esiste
+
+    //qua siamo sicuri che la chiave è univoca
+    //la inserisco nella tabella con timestamp e id
+
+    return key;
+}
+
+/*
+    Returns:    true if the key is unique in the shared memory
+                false if it's not
+    Param:      key: key to evaluate
+
+    This function access to the shared memory to check if the key is
+    unique. It uses an already created semaphore (by the server).
+*/
+bool isUniqueKey(unsigned int key)
+{
+    //prendo il semaforo
+    //scorro tutta la memoria condivisa
+    //torno true se è univoca
+    //torno false se non lo è
+}
+
+void sendResponse(struct Request *request, unsigned int key)
+{
+    struct Response response;
     int clientFIFO;
     char path2ClientFIFO [256];
     int byteWrite = 0;
 
     // make the path of client's FIFO    
-    sprintf(path2ClientFIFO, "%s%s", baseClientFIFO, clientRequest->id);
+    sprintf(path2ClientFIFO, "%s%s", baseClientFIFO, request->id);
+
     printf("<Server> opening FIFO %s...\n", path2ClientFIFO);
     // Open the client's FIFO in write-only mode
-
     clientFIFO = open(path2ClientFIFO, O_WRONLY);  //sola scrittura
+    
     if (clientFIFO == -1) 
     {
         printf("<Server> open failed");
         return;
     }
 
-    if(isServiceValid(clientRequest->service))
-        serverResponse.key = keyGenerator(clientRequest->service);  //calls keyEncrypter and check if the key is unique. Returns the key
-    else
-        serverResponse.key = 0;
-
-    // Prepare the response for the client   
+    // Prepare the response for the client
+    response.key = key;
 
     printf("<Server> sending a response\n");
     // Write the Response into the opened FIFO
-
-    byteWrite = write(clientFIFO, &serverResponse, sizeof(struct Response));
+    byteWrite = write(clientFIFO, &response, sizeof(struct Response));
         
     // Check the number of bytes written to the FIFO
     if (byteWrite == -1) 
@@ -216,7 +249,7 @@ void sendResponse(struct Request *clientRequest)
         return;
     }
 
-    // Close the FIFO
+    // Close the FIFO client
     if(close(clientFIFO) != 0)
         printf("<Server> close failed");
 }
@@ -231,14 +264,15 @@ bool isServiceValid(char *str)
     return false;
 }
 
-void stringInput(char* msg, char* str, int dim_string)
+//--- NON SERVE IN SERVER, O NO? ---
+/*void stringInput(char* msg, char* str, int dim_string)
 {
     char input[DIM_STRING + 1] = {""};
 
     printf("%s", msg);
     scanf(" %255[^\n]s", input);			//regex per prendere gli spazi, 255 char al max, e per ignorare i \n
     strncpy(str, input, dim_string);
-}
+}*/
 
 void toUpperCase(char *str)
 {
@@ -255,7 +289,8 @@ void toUpperCase(char *str)
     strcpy(str, upper);
 }
 
-unsigned int keyGenerator(char *service)
+//---   RIMPIAZZATA ---
+/*unsigned int keyGenerator(char *service)
 {
     unsigned int key = 0;
 
@@ -270,8 +305,8 @@ unsigned int keyGenerator(char *service)
     - come la rappresentiamo? con array? con lista?
     */
 
-    return key;
-}
+    //return key;
+//}
 
 /*
     Key Encrypter
