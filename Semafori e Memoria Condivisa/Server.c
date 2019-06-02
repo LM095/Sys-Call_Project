@@ -105,19 +105,26 @@ int main (void)
     printf("<Server> creating a semaphore...\n");
     int semid = create_sem_set(SEM_KEY);
 
-    //setto il semaforo a 1
+    //setto il semaforo a 0
     printf("<Server> inizialize the semaphore...\n");
-    semOp(semid, 0, 1);
+    semOp(semid, 0, 0);
 
     //-----CREAZIONE MEM CONDIVISA -----
+    struct KeyTable *table;
+    size_t size = sizeof(struct KeyTable) * TABLE_SIZE;
 
     //allocate a shared memory segment
     printf("<Server> allocating a shared memory segment...\n");
-    int shmidServer = alloc_shared_memory(SHM_KEY, sizeof(struct KeyTable) * TABLE_SIZE);
+    int shmidServer = alloc_shared_memory(SHM_KEY, size);
     
     // attach the shared memory segment, ho ottenuto il puntantore alla zona di memoria condivisa
     printf("<Server> attaching the shared memory segment...\n");
-    struct KeyTable *k = (struct KeyTable*)get_shared_memory(shmidServer, 0);
+    table = (struct KeyTable*)get_shared_memory(shmidServer, 0);
+
+    //creazione processo figlio keymanager
+    pid_t KeyManager = fork();
+    //mollo semaforo +1
+    semOp(semid, 0, 1);
 
     do{
         printf("<Server> waiting for a Request...\n");
@@ -136,12 +143,11 @@ int main (void)
             key = updateTable(clientRequest, semid);
             sendResponse(&clientRequest, key);
         }
-        
-        
-
     }
     while (byteRead != -1);
-
+    
+    //mollo semaforo +1
+    semOp(semid, 0, 1);
     
 
     // caught SIGTERM, run quit() to remove the FIFO and
@@ -173,7 +179,12 @@ void quit()
 unsigned int updateTable(struct Request request, int semid)
 {
     unsigned int key = 0;
-
+    // forse qui o forse in isuniquekey
+    //-1 sem
+    //prendo il semaforo
+     //cerco di prendere il semaforo con -1
+    semOp(semid, 0, -1);  
+    
     do
     {
         if(isServiceValid(request.service))
@@ -200,18 +211,14 @@ unsigned int updateTable(struct Request request, int semid)
 bool isUniqueKey(unsigned int key, int semid)
 {
     int i = 0;
-    //-1 sem
-    //prendo il semaforo
-    semOp(semid, 0, -1);    //cerco di prendere il semaforo con -1
 
     //scorro tutta la memoria condivisa
-
     for(i = 0; i < 1023; i = i + (sizeof(struct KeyTable)))
     {
-        if(key = )
+        if(key == //nome_mem_condivisa[i].key)
+            return false;
     } 
-    //torno true se è univoca
-    //torno false se non lo è
+    return true;
 }
 
 void sendResponse(struct Request *request, unsigned int key)

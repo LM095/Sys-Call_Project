@@ -53,7 +53,7 @@ void semOp (int semid, unsigned short sem_num, short sem_op);
 int main(void)
 {
     struct Prova *p2;
-    size_t size = sizeof(p2)*5;
+    size_t size = sizeof(struct Prova)*5;
     
     //allocate a shared memory segment
     printf("<Client> allocating a shared memory segment...\n");
@@ -78,6 +78,7 @@ int main(void)
     //lascio il controllo del semaforo, ovvero gli aggiungo 1 (torna a 0)
     printf("<Client> inizialize the semaphore...\n");
     semOp(semid, 0, 1);
+    
     
     return 0;
 }

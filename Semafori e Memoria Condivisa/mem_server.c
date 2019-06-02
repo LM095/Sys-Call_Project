@@ -57,14 +57,13 @@ void *get_shared_memory(int shmid, int shmflg);
 void free_shared_memory(void *ptr_sh);
 void remove_shared_memory(int shmid);
 void semOp (int semid, unsigned short sem_num, short sem_op); 
+void remove_semaphore(int semid);
 
 int main(void)
 {
     struct Prova *p;
     size_t size = sizeof(struct Prova)*5;
 
-    printf("\nkey: %u\n", sizeof(unsigned int));
-    printf("\ntimestamp: %u\n", sizeof(time_t));
     printf("\nsize: %li\n", size);
 
     //allocate a shared memory segment
@@ -75,6 +74,8 @@ int main(void)
     printf("<Server> attaching the shared memory segment...\n");
     p = (struct Prova*)get_shared_memory(shmidServer2, 0);
     
+    pid_t KeyManager = fork();
+
     /////// INSERIMENTO MANUALE DI UN PO' DI VALORI PER TEST //////
     strcpy(p[0].name, "User1");
     p[0].key = 12345;
@@ -107,11 +108,13 @@ int main(void)
             printf("Chiave trovata in posizione %i\n",i);
     }
     
-    //MANCA LA CHIUSURA DELLA MEMORIA E DEI SEMAFORI!!!!!!
+    //CLOSING SEMAPHORE AND SHARED MEMORY
 
     free_shared_memory(p); 
-    remove_shared_memory(shmidServer2); 
-    
+    remove_shared_memory(shmidServer2);
+
+    remove_semaphore(semid);
+        
     return 0;
 }
 
@@ -204,4 +207,13 @@ void remove_shared_memory(int shmid)
     // delete the shared memory segment
     if (shmctl(shmid, IPC_RMID, NULL) == -1)
         printf("shmctl failed");
+}
+
+void remove_semaphore(int semid)
+{
+    //semctl(semid, semnum, cmd, 0);
+    int sem_close = semctl(semid, 0, IPC_RMID, NULL);
+
+    if(sem_close == -1)
+        printf("Chiusura semaforo non riuscita!\n");
 }
