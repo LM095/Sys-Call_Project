@@ -27,7 +27,7 @@ ipcrm - a           //chiude tutte le ipc attive
 #define REQUEST 0
 
 /*
-    Just use the key to know if that row in the table is valis:
+    Just use the key to know if that row in the table is valid:
     0: empty and/or usable
     >0: valid key
 */
@@ -61,7 +61,11 @@ void semOp (int semid, unsigned short sem_num, short sem_op);
 int main(void)
 {
     struct Prova *p;
-    size_t size = sizeof(p)*5;
+    size_t size = sizeof(struct Prova)*5;
+
+    printf("\nkey: %u\n", sizeof(unsigned int));
+    printf("\ntimestamp: %u\n", sizeof(time_t));
+    printf("\nsize: %li\n", size);
 
     //allocate a shared memory segment
     printf("<Server> allocating a shared memory segment...\n");
@@ -102,6 +106,11 @@ int main(void)
         if(p[i].key == 999)
             printf("Chiave trovata in posizione %i\n",i);
     }
+    
+    //MANCA LA CHIUSURA DELLA MEMORIA E DEI SEMAFORI!!!!!!
+
+    free_shared_memory(p); 
+    remove_shared_memory(shmidServer2); 
     
     return 0;
 }
