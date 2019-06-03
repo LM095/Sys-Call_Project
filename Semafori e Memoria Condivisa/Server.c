@@ -121,9 +121,10 @@ int main (void)
     printf("<Server> attaching the shared memory segment...\n");
     table = (struct KeyTable*)get_shared_memory(shmidServer, 0);
 
-    //creazione processo figlio keymanager
+    //----- CREAZIONE KEYMANAGER ----
     pid_t KeyManager = fork();
-    //mollo semaforo +1
+    int sig = SIGALRM(30);
+    //mollo semaforo +1 V(MUTEX)
     semOp(semid, 0, 1);
 
     do{
@@ -143,13 +144,13 @@ int main (void)
             key = updateTable(clientRequest, semid);
             sendResponse(&clientRequest, key);
         }
+
+         //mollo semaforo +1
+        //V(MUTEX)
+        semOp(semid, 0, 1);
     }
     while (byteRead != -1);
     
-    //mollo semaforo +1
-    semOp(semid, 0, 1);
-    
-
     // caught SIGTERM, run quit() to remove the FIFO and
     // terminate the process.
     quit();
@@ -183,8 +184,11 @@ unsigned int updateTable(struct Request request, int semid)
     //-1 sem
     //prendo il semaforo
      //cerco di prendere il semaforo con -1
+
+    //P(MUTEX)
     semOp(semid, 0, -1);  
-    
+
+    // ---- CREAZIONE CHIAVE -----
     do
     {
         if(isServiceValid(request.service))
@@ -300,39 +304,6 @@ void toUpperCase(char *str)
     strcpy(str, upper);
 }
 
-//---   RIMPIAZZATA ---
-/*unsigned int keyGenerator(char *service)
-{
-    unsigned int key = 0;
-
-    do
-    {
-        key = keyEncrypter(service); 
-    }
-    while(!isUniqueKey(key)); //funzione che checkka in memoria condivisa e torna un bool per vedere se la chiave esiste
-
-    /*
-    - creare mem condivisa da ?? byte
-    - come la rappresentiamo? con array? con lista?
-    */
-
-    //return key;
-//}
-
-/*
-    Key Encrypter
-
-    Param: a string that specifies the service (upper case)
-    Return: the key generated as an unsigned int (2^32, all positive)
-
-    The function creates a key using bitwise operators.
-    First, a random is generated between 0 and UINT_MAX-1 ((2^32)-1), 
-    then it's left shifted by 2 bits. 
-    Now that the last 2 positions are 00, there's an OR operation 
-    between the random and the respective mask service (constant), 
-    that fills the last 2 positions.
-    Finally, the key is returned.
-*/
 unsigned int keyEncrypter(char *service)
 {
     srand(time(NULL));
@@ -468,4 +439,9 @@ void remove_shared_memory(int shmid)
     // delete the shared memory segment
     if (shmctl(shmid, IPC_RMID, NULL) == -1)
         printf("shmctl failed");
+}
+
+void sigHandler(int sig) 
+{
+  /* Code for the handler */
 }
