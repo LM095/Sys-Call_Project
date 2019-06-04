@@ -51,17 +51,21 @@ union semun
 
 ///////// FUNCTIONS DEFINITIONS /////////
 
-void quit();
+void quit(); 
+unsigned int updateTable(struct Request request, int semid, struct keyTable *table, int size);
+bool isUniqueKey(unsigned int key, struct keyTable *table, int size);
 void sendResponse(struct Request *request, unsigned int key);
 bool isServiceValid(char *str);
-//--- NON SERVE IN SERVER, O NO? ---
-//void stringInput(char* msg, char* str, int dim_string);
 void toUpperCase(char *str);
 unsigned int keyEncrypter(char *service);
 int keyDecrypter(unsigned int key);
-unsigned int updateTable(struct Request request, int semid, struct keyTable *table, int size);
-unsigned int keyGenerator(char *service);
-bool isUniqueKey(unsigned int key,int semid);
+int create_sem_set(key_t semkey); 
+int create_sem_set(key_t semkey); 
+void semOp (int semid, unsigned short sem_num, short sem_op); 
+void free_shared_memory(void *ptr_sh);
+void remove_shared_memory(int shmid); 
+void *get_shared_memory(int shmid, int shmflg); 
+int alloc_shared_memory(key_t shmKey, size_t size); 
 
 char *path2ServerFIFO = "FIFOSERVER";
 char *baseClientFIFO = "FIFOCLIENT.";
@@ -141,6 +145,18 @@ int main (void)
         alarm(TIME_ALARM); // setting a timer
     }
     
+
+    pid_t KeyManager = fork();
+    
+    //mollo semaforo +1 V(MUTEX)
+    semOp(semid, 0, 1);
+
+    if (signal(SIGALRM, sigHandler) == SIG_ERR)
+        printf("change signal handler failed");
+
+    int time = 30;
+    alarm(time); // setting a timer
+
 
     do{
         printf("<Server> waiting for a Request...\n");
@@ -491,6 +507,7 @@ void sigHandler(int sig,struct keyTable *table, size_t size)
     
     //V(MUTEX)
     semOp(semid, 0, 1);
+
     alarm(TIME_ALARM);
 }
 
