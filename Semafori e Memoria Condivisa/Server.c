@@ -11,6 +11,7 @@
 #include <sys/shm.h>
 #include <sys/sem.h>
 #include <sys/types.h>
+#include <signal.h>
 
 #define DIM_STRING 255 //dimensione massima della stringa--> scelta progettuale 
 #define STAMPA_MASK 1
@@ -19,6 +20,7 @@
 #define SHM_KEY 10
 #define SEM_KEY 20
 #define TABLE_SIZE 1024
+#define TIME_ALARM = 30;
 ///////// STRUCT /////////////////////////
 
 struct Request
@@ -32,7 +34,7 @@ struct Response
 	unsigned int key;
 };
 
-struct KeyTable
+struct keyTable
 {
     char user[DIM_STRING + 1];
     unsigned int key;
@@ -46,6 +48,7 @@ union semun
     unsigned short * array;
 };
 
+
 ///////// FUNCTIONS DEFINITIONS /////////
 
 void quit();
@@ -56,7 +59,7 @@ bool isServiceValid(char *str);
 void toUpperCase(char *str);
 unsigned int keyEncrypter(char *service);
 int keyDecrypter(unsigned int key);
-unsigned int updateTable(struct Request request, int sem_id);
+unsigned int updateTable(struct Request request, int semid, struct keyTable *table, int size);
 unsigned int keyGenerator(char *service);
 bool isUniqueKey(unsigned int key,int semid);
 
@@ -71,7 +74,8 @@ int main (void)
     struct Request clientRequest;
     int byteRead = -1;
     unsigned int key = 0;
-   
+    int tablePointer = 0;
+
     printf("<Server> Making FIFO...\n");
     // FIFO with the following permissions:
     // user:  read, write
@@ -110,8 +114,8 @@ int main (void)
     semOp(semid, 0, 0);
 
     //-----CREAZIONE MEM CONDIVISA -----
-    struct KeyTable *table;
-    size_t size = sizeof(struct KeyTable) * TABLE_SIZE;
+    struct keyTable *table;
+    size_t size = sizeof(struct keyTable) * TABLE_SIZE;
 
     //allocate a shared memory segment
     printf("<Server> allocating a shared memory segment...\n");
@@ -119,13 +123,24 @@ int main (void)
     
     // attach the shared memory segment, ho ottenuto il puntantore alla zona di memoria condivisa
     printf("<Server> attaching the shared memory segment...\n");
-    table = (struct KeyTable*)get_shared_memory(shmidServer, 0);
+    table = (struct keyTable*)get_shared_memory(shmidServer, 0);
 
     //----- CREAZIONE KEYMANAGER ----
-    pid_t KeyManager = fork();
-    int sig = SIGALRM(30);
-    //mollo semaforo +1 V(MUTEX)
+    pid_t keyManager = fork();
+    if(keyManager == -1)
+        printf("ERRORE FORK() !\n");
+
+    //rilascio il semaforo +1 V(MUTEX)
     semOp(semid, 0, 1);
+
+
+    if(keyManager == 0)
+    {
+        if (signal(SIGALRM, sigHandler) == SIG_ERR)
+            printf("change signal handler failed");
+        alarm(TIME_ALARM); // setting a timer
+    }
+    
 
     do{
         printf("<Server> waiting for a Request...\n");
@@ -141,7 +156,7 @@ int main (void)
             printf("<Server> it looks like I did not receive a valid request\n");
         else 
         {
-            key = updateTable(clientRequest, semid);
+            key = updateTable(clientRequest, semid, table, TABLE_SIZE);
             sendResponse(&clientRequest, key);
         }
 
@@ -177,9 +192,10 @@ void quit()
     _exit(0);
 }
 
-unsigned int updateTable(struct Request request, int semid)
+unsigned int updateTable(struct Request request, int semid, struct keyTable *table, int size)
 {
     unsigned int key = 0;
+    int i = 0;
     // forse qui o forse in isuniquekey
     //-1 sem
     //prendo il semaforo
@@ -196,11 +212,26 @@ unsigned int updateTable(struct Request request, int semid)
         else
             return 0;   //service not valid, key = 0
     }
-    while(!isUniqueKey(key, semid)); //funzione che checkka in memoria condivisa e torna un bool per vedere se la chiave esiste
+    while(!isUniqueKey(key, table, size)); //funzione che checkka in memoria condivisa e torna un bool per vedere se la chiave esiste
 
     //qua siamo sicuri che la chiave è univoca
     //la inserisco nella tabella con timestamp e id
-    //+1 sem
+
+    for(i = 0; i < size; i++)
+    {
+        if(table[i]->key == 0)
+        {
+            strcpy(table[i]->user, request.id);
+            table[i]->key = key;
+            table[i]->timestamp = time(NULL);
+            break;
+        }
+        else
+        {
+            printf("MEMORIA ESAURITA\n");
+        }
+    }
+
     return key;
 }
 
@@ -212,14 +243,13 @@ unsigned int updateTable(struct Request request, int semid)
     This function access to the shared memory to check if the key is
     unique. It uses an already created semaphore (by the server).
 */
-bool isUniqueKey(unsigned int key, int semid)
+bool isUniqueKey(unsigned int key, struct keyTable *table, int size)
 {
     int i = 0;
-
     //scorro tutta la memoria condivisa
-    for(i = 0; i < 1023; i = i + (sizeof(struct KeyTable)))
+    for(i = 0; i < size; i++)
     {
-        if(key == //nome_mem_condivisa[i].key)
+        if(table[i]->key == key)
             return false;
     } 
     return true;
@@ -441,7 +471,26 @@ void remove_shared_memory(int shmid)
         printf("shmctl failed");
 }
 
-void sigHandler(int sig) 
+void sigHandler(int sig,struct keyTable *table, size_t size) 
 {
-  /* Code for the handler */
+    int i = 0;
+
+    //P(MUTEX)
+    semOp(semid, 0, -1);
+
+    for(i = 0; i < size; i++)
+    {
+        //elimino la chiave se sono passati 5 minuti
+        if((table[i]->timestamp < time(NULL)-300) && (table[i]->key != 0))
+        {
+            stracpy(table[i]->user, "CHIAVE RIMOSSA")
+            table[i]->key = 0;
+            table[i]->timestamp = 0;
+        }
+    }  
+    
+    //V(MUTEX)
+    semOp(semid, 0, 1);
+    alarm(TIME_ALARM);
 }
+
