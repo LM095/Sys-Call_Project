@@ -37,11 +37,16 @@ void signalsHandler(int sig)
             printf("Sono %i e sto per killare qualcosa\n", getpid());
 
             if(pid == 0)                    //ovvero è il figlio
-                kill(getpid(), SIGTERM);    //mi suicido
+            {
+                exit(0);                     //mi suicido
+                //kill(getpid(), SIGQUIT);    //mi suicido
+            }
             else                            //ovvero il pid tornato è quello del figlio!
-                kill(pid, SIGTERM);
-
-            kill(getpid(), SIGTERM);
+            {
+                kill(pid, SIGTERM);         //figlio ko
+                exit(0);
+                //kill(getpid(), SIGTERM);    //mi suicido (il padre)
+            }
 
             break;
         }
@@ -63,16 +68,19 @@ int main(void)
     sigprocmask(SIG_SETMASK, &setSegnali, &vecchioSetSegnali);
     */
     
-    //tutta la maschera a 0
+    //tutta la maschera a 1
     sigfillset(&setSegnali);
 
-    //aggiungo il segnale SIGTERM
+    //tolgo il segnale SIGTERM
     sigdelset(&setSegnali, SIGTERM);    //non blocca SOLO sigterm
     //sigdelset(&setSegnali, SIGALRM);
     //sigdelset(&setSegnali, SIGSTOP);
 
     //sblocco solo sigterm
     sigprocmask(SIG_SETMASK, &setSegnali, &vecchioSetSegnali);
+
+    if(signal(SIGTERM, signalsHandler) == SIG_ERR) 
+        printf("\nProblema");
 
     printf("Pid padre da parte del padre: %i\n", getpid());
 
@@ -90,8 +98,14 @@ int main(void)
             printf("Pid padre da parte del figlio: %i\n", getppid());
             printf("Pid figlio da parte del figlio: %i\n", pid);
 
+            //sigdelset(&maskFiglio, SIGALRM);    //non blocca sigalarm
+            //sigprocmask(SIG_BLOCK, &maskFiglio, &setSegnali); //boh
+
             sigdelset(&setSegnali, SIGALRM);    //non blocca sigalarm
-            sigprocmask(SIG_SETMASK, &maskFiglio, &setSegnali); //boh
+
+            /*The last argument, oldset, is used to return information about the old process signal mask. 
+            If you just want to change the mask without looking at it, pass a null pointer as the oldset argument. */
+            sigprocmask(SIG_SETMASK, &setSegnali, NULL); //boh
 
             printf("\n - Imposto un timer di %i secondi finchè non arriva sigterm\n", ALARM_TIME);
 
