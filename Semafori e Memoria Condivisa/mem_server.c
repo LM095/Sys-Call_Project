@@ -13,12 +13,14 @@ ipcrm - a           //chiude tutte le ipc attive
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
 #include <limits.h>
 #include <time.h>
 #include <stdbool.h>
+#include <signal.h>
 
 #define DIM_STRING 255
 #define SHM_KEY 10
@@ -27,7 +29,7 @@ ipcrm - a           //chiude tutte le ipc attive
 #define REQUEST 0
 
 /*
-    Just use the key to know if that row in the table is valid:
+    Just use the key to know if that row in the table is valis:
     0: empty and/or usable
     >0: valid key
 */
@@ -49,6 +51,8 @@ union semun
     unsigned short * array;
 };
 
+
+pid_t figlio;
 ///////////// FUNCTION DECLARATION ///////////// 
 int create_sem_set(key_t semkey);
 // stanno dentro la libreria shared_memory.h/c
@@ -57,14 +61,22 @@ void *get_shared_memory(int shmid, int shmflg);
 void free_shared_memory(void *ptr_sh);
 void remove_shared_memory(int shmid);
 void semOp (int semid, unsigned short sem_num, short sem_op); 
-void remove_semaphore(int semid);
+void funzioneFiglio(struct Prova *p);
+void signalsHandlerKM(int sig);
+void signalsHandlerS(int sig);
 
 int main(void)
 {
     struct Prova *p;
     size_t size = sizeof(struct Prova)*5;
+    // create a semaphore set
+    printf("<Server> creating a semaphore set...\n");
+    int semid = create_sem_set(SEM_KEY);
 
-    printf("\nsize: %li\n", size);
+     //lascio il controllo del semaforo, ovvero lo setta -1
+    printf("<Server> inizialize the semaphore...\n");
+    semOp(semid, 0, -1);
+   
 
     //allocate a shared memory segment
     printf("<Server> allocating a shared memory segment...\n");
@@ -74,47 +86,51 @@ int main(void)
     printf("<Server> attaching the shared memory segment...\n");
     p = (struct Prova*)get_shared_memory(shmidServer2, 0);
     
-    pid_t KeyManager = fork();
+    figlio = fork();
 
-    /////// INSERIMENTO MANUALE DI UN PO' DI VALORI PER TEST //////
-    strcpy(p[0].name, "User1");
-    p[0].key = 12345;
-    strcpy(p[1].name, "User2");
-    p[1].key = 6789;
-    
-    printf("User: %s\n",p[0].name);
-    printf("La chiave inserita è: %i\n\n",p[0].key);
-    printf("User2: %s\n",p[1].name);
-    printf("La chiave2 inserita è: %i\n\n",p[1].key);
-
-    // create a semaphore set
-    printf("<Server> creating a semaphore set...\n");
-    int semid = create_sem_set(SEM_KEY);
-
-    //lascio il controllo del semaforo, ovvero lo setta -1
-    printf("<Server> inizialize the semaphore...\n");
-    semOp(semid, 0, -1);
-
-    //////////// TEST DOPO AVER RIPRESO IL SEMAFORO PER VEDERE SE IL CLIENT HA MODIFICATO LA MEM. CONDIVISA ////////////
-    printf("User3: %s\n",p[3].name);
-    printf("La chiave3 inserita è: %i\n\n",p[3].key);
-
-    printf("User4: %s\n",p[4].name);
-    printf("La chiave4 inserita è: %i\n\n",p[4].key);
-    
-    for(int i = 0 ; i < 5;i++)
+    if(figlio == 0) //figlio
     {
-        if(p[i].key == 999)
-            printf("Chiave trovata in posizione %i\n",i);
+        funzioneFiglio(p);
     }
-    
-    //CLOSING SEMAPHORE AND SHARED MEMORY
+    else
+    {
+        /////// INSERIMENTO MANUALE DI UN PO' DI VALORI PER TEST //////
 
-    free_shared_memory(p); 
-    remove_shared_memory(shmidServer2);
+        signal(SIGTERM, signalsHandlerS);
 
-    remove_semaphore(semid);
+        strcpy(p[0].name, "User1");
+        p[0].key = 12345;
+        strcpy(p[1].name, "User2");
+        p[1].key = 6789;
         
+        printf("User: %s\n",p[0].name);
+        printf("La chiave inserita è: %i\n\n",p[0].key);
+        printf("User2: %s\n",p[1].name);
+        printf("La chiave2 inserita è: %i\n\n",p[1].key);       
+
+       
+
+        //////////// TEST DOPO AVER RIPRESO IL SEMAFORO PER VEDERE SE IL CLIENT HA MODIFICATO LA MEM. CONDIVISA ////////////
+        printf("User3: %s\n",p[3].name);
+        printf("La chiave3 inserita è: %i\n\n",p[3].key);
+
+        printf("User4: %s\n",p[4].name);
+        printf("La chiave4 inserita è: %i\n\n",p[4].key);
+        
+        for(int i = 0 ; i < 5;i++)
+        {
+            if(p[i].key == 999)
+                printf("Chiave trovata in posizione %i\n",i);
+        }
+    }   
+
+    //////////////////////// RIMUOVO MEMORIA SENZA FARE DETACHE ///////////////////////
+    printf("<Server> remove share memory:\n");
+    free_shared_memory(p);
+    remove_shared_memory(shmidServer2);
+    semOp(semid, 0, 1);
+    
+    
     return 0;
 }
 
@@ -209,11 +225,25 @@ void remove_shared_memory(int shmid)
         printf("shmctl failed");
 }
 
-void remove_semaphore(int semid)
+void funzioneFiglio(struct Prova *p)
 {
-    //semctl(semid, semnum, cmd, 0);
-    int sem_close = semctl(semid, 0, IPC_RMID, NULL);
+    printf("\nsono la funzione figlio\n");
 
-    if(sem_close == -1)
-        printf("Chiusura semaforo non riuscita!\n");
+    signal(SIGTERM, signalsHandlerKM);
+
+    while(1)
+    {
+        pause();
+    }
+}
+
+void signalsHandlerKM(int sig)
+{
+    exit(0);
+}
+
+void signalsHandlerS(int sig)
+{
+    free_shared_memory(p);
+    remove_shared_memory(s); 
 }

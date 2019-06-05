@@ -68,9 +68,7 @@ int main(void)
     strcpy(p2[3].name, "TEST");
     p2[3].key = 1111523;
 
-    strcpy(p2[4].name, "TEST2");
-    p2[4].key = 5555;
-
+    
     //////////// CREAZIONE DEL SEMAFORO PER FAR CONTROLLARE AL SERVER LE MODIFICHE ////////////
     printf("<Client> creating a semaphore set...\n");
     int semid = create_sem_set(SEM_KEY);
@@ -78,7 +76,17 @@ int main(void)
     //lascio il controllo del semaforo, ovvero gli aggiungo 1 (torna a 0)
     printf("<Client> inizialize the semaphore...\n");
     semOp(semid, 0, 1);
-    
+
+
+    semOp(semid, 0, -1);
+    free_shared_memory(p2); 
+    printf("<Client> add and print somenthing in the share memory\n");
+    strcpy(p2[4].name, "TEST2");
+    p2[4].key = 5555;
+    printf("%s\n",p2[4].name);
+    printf("%i\n",p2[4].key);
+
+
     
     return 0;
 }

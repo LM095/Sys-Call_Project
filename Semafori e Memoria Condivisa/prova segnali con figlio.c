@@ -57,7 +57,6 @@ void signalsHandler(int sig)
 int main(void)
 {
     sigset_t setSegnali, vecchioSetSegnali, maskFiglio;
-    semid = 2;
 
     /*
     //tutta la maschera a 0
@@ -79,7 +78,7 @@ int main(void)
     //sigdelset(&setSegnali, SIGSTOP);
 
     //sblocco solo sigterm
-    sigprocmask(SIG_SETMASK, &setSegnali, &vecchioSetSegnali);
+    sigprocmask(SIG_SETMASK, &setSegnali, NULL);
 
     if(signal(SIGTERM, signalsHandler) == SIG_ERR) 
         printf("\nProblema");

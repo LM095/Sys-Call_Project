@@ -66,7 +66,7 @@ void free_shared_memory(void *ptr_sh);
 void remove_shared_memory(int shmid); 
 void *get_shared_memory(int shmid, int shmflg); 
 int alloc_shared_memory(key_t shmKey, size_t size); 
-void sigHandler(int sig); 
+void signalsHandler(int sig); 
 void checkTableEvery30Sec(struct keyTable *table, int size);
 
 //////////// GLOBAL VARIABLES ///////////
@@ -85,6 +85,7 @@ int main (void)
     struct Request clientRequest;
     int byteRead = -1;
     unsigned int key = 0;
+    sigset_t setSig; 
 
     printf("<Server> Making FIFO...\n");
     // FIFO with the following permissions:
@@ -135,56 +136,85 @@ int main (void)
     //printf("<Server> attaching the shared memory segment...\n");    
     //struct keyTable *table = (struct keyTable*)get_shared_memory(shmidServer, 0);
 
+    //rilascio il semaforo +1 V(MUTEX) (serve???)
+    semOp(semid, 0, 1);
+
+    // -------- SET SIGNAL MASK --------------
+    //tutta la maschera a 1
+    sigfillset(&setSig);
+
+    //tolgo il segnale SIGTERM
+    sigdelset(&setSig, SIGTERM);    //non blocca SOLO sigterm
+
+    //sblocco solo sigterm
+    sigprocmask(SIG_SETMASK, &setSig, NULL);
+
+    //setto handler in caso di sigterm (ricorda che prima dobbiamo aprire fifo, memoria e semafori, altrimenti alla chiusura non si chiude tutto bene)
+    if(signal(SIGTERM, signalsHandler) == SIG_ERR) 
+        printf("\nProblema");
+
     //----- CREAZIONE KEYMANAGER ----
-    keyManager = fork();
+    keyManager = fork();        //keyManager è globale
 
-    if(keyManager == -1)
-        printf("ERRORE FORK() !\n");
-
-    //rilascio il semaforo +1 V(MUTEX)
-    semOp(semid, 0, 1);
-
-    if(keyManager == 0)
+    switch(keyManager)
     {
-        if (signal(SIGALRM, sigHandler) == SIG_ERR)
-            printf("change signal handler failed");
-        alarm(TIME_ALARM); // setting a timer
-    }
-    
-    
-    //mollo semaforo +1 V(MUTEX)
-    semOp(semid, 0, 1);
-
-    if (signal(SIGALRM, sigHandler) == SIG_ERR)
-        printf("change signal handler failed");
-
-    int time = 30;
-    alarm(time); // setting a timer
-
-
-    do{
-        printf("<Server> waiting for a Request...\n");
-        // Read a request from the FIFO
-        byteRead = read(serverFIFO, &clientRequest, sizeof(struct Request));
-
-        // Check the number of bytes read from the FIFO
-        if(byteRead == -1) 
+        case -1:
         {
-            printf("<Server> it looks like the FIFO is broken\n");
-        } 
-        else if (byteRead != sizeof(struct Request) || byteRead == 0)
-            printf("<Server> it looks like I did not receive a valid request\n");
-        else 
-        {
-            key = updateTable(clientRequest, semid, TABLE_SIZE);
-            sendResponse(&clientRequest, key);
+            printf("ERRORE FORK() !\n");
+            break;
         }
+        case 0:     //figlio
+        {
+            sigdelset(&setSig, SIGALRM);    //non blocca sigalarm
 
-         //mollo semaforo +1
-        //V(MUTEX)
-        semOp(semid, 0, 1);
-    }
-    while (byteRead != -1);
+            /*The last argument, oldset, is used to return information about the old process signal mask. 
+            If you just want to change the mask without looking at it, pass a null pointer as the oldset argument. */
+            sigprocmask(SIG_SETMASK, &setSig, NULL); 
+
+            printf("\n - Imposto un timer di %i secondi finchè non arriva sigterm\n", TIME_ALARM);
+
+            if(signal(SIGALRM, signalsHandler) == SIG_ERR) 
+                printf("\nProblema");
+
+            alarm(TIME_ALARM);
+
+            while(1)            
+                pause(); 
+
+            break;
+        }
+        default:    //padre
+        {
+            do{
+                printf("<Server> waiting for a Request...\n");
+                // Read a request from the FIFO
+                byteRead = read(serverFIFO, &clientRequest, sizeof(struct Request));
+
+                // Check the number of bytes read from the FIFO
+                if(byteRead == -1) 
+                {
+                    printf("<Server> it looks like the FIFO is broken\n");
+                } 
+                else if (byteRead != sizeof(struct Request) || byteRead == 0)
+                    printf("<Server> it looks like I did not receive a valid request\n");
+                else 
+                {
+                    key = updateTable(clientRequest, semid, TABLE_SIZE);
+                    sendResponse(&clientRequest, key);
+                }
+
+                //mollo semaforo +1
+                //V(MUTEX)
+                semOp(semid, 0, 1);
+            }
+            while (byteRead != -1);
+
+            break;
+        }
+    }    
+    
+    //mollo semaforo +1 V(MUTEX) - lo facciamo già dentro l'handler
+    //semOp(semid, 0, 1);
     
     // caught SIGTERM, run quit() to remove the FIFO and
     // terminate the process.
@@ -195,8 +225,9 @@ int main (void)
 
 //////////// FUNCTIONS IMPLEMENTATIONS ///////////////////
 
-void quit() 
+void quit() //FARE LE FUNZIONI CON IL CONTROLLO INCORPORATO
 {
+    //////// FIFO ////////
     // Close the FIFO
     if (serverFIFO != 0 && close(serverFIFO) == -1)
         printf("close failed");
@@ -207,6 +238,13 @@ void quit()
     // Remove the FIFO
     if (unlink(path2ServerFIFO) != 0)
         printf("unlink failed");
+    
+    //////// SHARED MEMORY /////////
+
+    free_shared_memory(p); //table? per forza!!!
+    remove_shared_memory(shmidServer);
+
+    remove_semaphore(semid);
 
     // terminate the process
     _exit(0);
@@ -498,9 +536,9 @@ void remove_shared_memory(int shmid)
         printf("shmctl failed");
 }
 
-void sigHandler(int sig) 
+void signalsHandler(int sig) 
 {
-    //P(MUTEX)
+    //P(MUTEX)  ***prendiamo il semaforo!!! importante!!!
     semOp(semid, 0, -1);
 
     //mi attacco alla memoria
@@ -518,7 +556,7 @@ void sigHandler(int sig)
 
             alarm(TIME_ALARM);
 
-            if(signal(SIGALRM, sigHandler) == SIG_ERR) 
+            if(signal(SIGALRM, signalsHandler) == SIG_ERR) 
                 printf("\nProblema");
 
             break;
@@ -535,6 +573,7 @@ void sigHandler(int sig)
             else                              //ovvero il pid tornato è quello del figlio!
             {
                 kill(keyManager, SIGTERM);    //figlio ko
+                //bisogna inserire la quit() prima della exit
                 exit(0);
                 //kill(getpid(), SIGTERM);    //mi suicido (il padre)
             }
