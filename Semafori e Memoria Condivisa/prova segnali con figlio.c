@@ -17,6 +17,7 @@
 #define ALARM_TIME 2
 
 pid_t pid = 0;      //proviamo globale
+int const semid;
 
 void signalsHandler(int sig)
 {
@@ -56,6 +57,7 @@ void signalsHandler(int sig)
 int main(void)
 {
     sigset_t setSegnali, vecchioSetSegnali, maskFiglio;
+    semid = 2;
 
     /*
     //tutta la maschera a 0
