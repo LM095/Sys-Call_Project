@@ -75,7 +75,7 @@ int main(void)
         printf("open failed");
 
     // Step-5: The client reads a Response from the server
-    struct Response serverResponse;
+    struct Response serverResponse = { 0 };
     if (read(clientFIFO, &serverResponse,
         sizeof(struct Response)) != sizeof(struct Response))
         printf("read failed");

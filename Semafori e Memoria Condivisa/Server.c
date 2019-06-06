@@ -54,7 +54,7 @@ union semun
 ///////// FUNCTIONS DEFINITIONS /////////
 
 void quit(); 
-unsigned int updateTable(struct Request request, int semid, int size);
+unsigned int updateTable(struct Request request, int size);
 bool isUniqueKey(unsigned int key, int size);
 void sendResponse(struct Request *request, unsigned int key);
 bool isServiceValid(char *str);
@@ -213,7 +213,7 @@ int main (void)
                 {
                     //P(MUTEX)
                     semOp(semid, 0, -1);   
-                    key = updateTable(clientRequest, semid, TABLE_SIZE);
+                    key = updateTable(clientRequest, TABLE_SIZE);
                     //mollo semaforo +1
                     //V(MUTEX)
                     semOp(semid, 0, 1);
@@ -254,7 +254,7 @@ void quit() //FARE LE FUNZIONI CON IL CONTROLLO INCORPORATO
    
 }
 
-unsigned int updateTable(struct Request request, int semid, int size)
+unsigned int updateTable(struct Request request, int size)
 {
     unsigned int key = 0;
     int i = 0;
@@ -347,12 +347,10 @@ void sendResponse(struct Request *request, unsigned int key)
     if (byteWrite == -1) 
     {
         printf("<Server> write failed\n");
-        return;
     } 
     else if (byteWrite != sizeof(struct Response) || byteWrite == 0)
     {
         printf("<Server> it looks like I can't write all the fields\n");
-        return;
     }
 
     // Close the FIFO client
