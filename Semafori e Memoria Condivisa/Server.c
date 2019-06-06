@@ -53,7 +53,7 @@ union semun
 
 void quit(); 
 unsigned int updateTable(struct Request request, int semid, int size);
-bool isUniqueKey(unsigned int key, struct keyTable *table, int size);
+bool isUniqueKey(unsigned int key, int size);
 void sendResponse(struct Request *request, unsigned int key);
 bool isServiceValid(char *str);
 void toUpperCase(char *str);
@@ -66,8 +66,9 @@ void free_shared_memory(void *ptr_sh);
 void remove_shared_memory(int shmid); 
 void *get_shared_memory(int shmid, int shmflg); 
 int alloc_shared_memory(key_t shmKey, size_t size); 
-void signalsHandler(int sig); 
-void checkTableEvery30Sec(struct keyTable *table, int size);
+void signalsHandlerKeyManager(int sig); 
+void signalsHandlerServer(int sig); 
+void checkTableEvery30Sec(int size);
 
 //////////// GLOBAL VARIABLES ///////////
 
@@ -76,6 +77,7 @@ char *baseClientFIFO = "FIFOCLIENT.";
 int semid;
 int shmidServer;
 pid_t keyManager;
+struct keyTable *table;
 
 // the file descriptor entry for the FIFO
 int serverFIFO, serverFIFO_extra;
@@ -116,6 +118,21 @@ int main (void)
     
     /////////////////////// INZIO SINCRONIZZAZIONE ////////////////////////////////////////
 
+    // -------- SET SIGNAL MASK --------------
+    //tutta la maschera a 1
+    sigfillset(&setSig);
+
+    //tolgo il segnale SIGTERM
+    sigdelset(&setSig, SIGTERM);    //non blocca SOLO sigterm
+
+    //sblocco solo sigterm
+    sigprocmask(SIG_SETMASK, &setSig, NULL);
+
+    //setto handler in caso di sigterm (ricorda che prima dobbiamo aprire fifo, memoria e semafori, altrimenti alla chiusura non si chiude tutto bene)
+    if(signal(SIGTERM, signalsHandler) == SIG_ERR) 
+        printf("\nProblema");
+
+
     // create a semaphore 
     printf("<Server> creating a semaphore...\n");
     semid = create_sem_set(SEM_KEY);
@@ -134,25 +151,11 @@ int main (void)
     // nel main non serve!!!!
     // attach the shared memory segment, ho ottenuto il puntantore alla zona di memoria condivisa
     //printf("<Server> attaching the shared memory segment...\n");    
-    //struct keyTable *table = (struct keyTable*)get_shared_memory(shmidServer, 0);
+    table = (struct keyTable*)get_shared_memory(shmidServer, 0);
 
     //rilascio il semaforo +1 V(MUTEX) (serve???)
     semOp(semid, 0, 1);
-
-    // -------- SET SIGNAL MASK --------------
-    //tutta la maschera a 1
-    sigfillset(&setSig);
-
-    //tolgo il segnale SIGTERM
-    sigdelset(&setSig, SIGTERM);    //non blocca SOLO sigterm
-
-    //sblocco solo sigterm
-    sigprocmask(SIG_SETMASK, &setSig, NULL);
-
-    //setto handler in caso di sigterm (ricorda che prima dobbiamo aprire fifo, memoria e semafori, altrimenti alla chiusura non si chiude tutto bene)
-    if(signal(SIGTERM, signalsHandler) == SIG_ERR) 
-        printf("\nProblema");
-
+    
     //----- CREAZIONE KEYMANAGER ----
     keyManager = fork();        //keyManager è globale
 
@@ -179,13 +182,14 @@ int main (void)
             alarm(TIME_ALARM);
 
             while(1)            
-                pause(); 
+                pause(); //wait unitl a signal come, suspend thread
 
             break;
         }
         default:    //padre
         {
-            do{
+            do
+			{
                 printf("<Server> waiting for a Request...\n");
                 // Read a request from the FIFO
                 byteRead = read(serverFIFO, &clientRequest, sizeof(struct Request));
@@ -202,24 +206,12 @@ int main (void)
                     key = updateTable(clientRequest, semid, TABLE_SIZE);
                     sendResponse(&clientRequest, key);
                 }
-
-                //mollo semaforo +1
-                //V(MUTEX)
-                semOp(semid, 0, 1);
             }
             while (byteRead != -1);
-
             break;
         }
     }    
     
-    //mollo semaforo +1 V(MUTEX) - lo facciamo già dentro l'handler
-    //semOp(semid, 0, 1);
-    
-    // caught SIGTERM, run quit() to remove the FIFO and
-    // terminate the process.
-    quit();
-
     return 0;
 }
 
@@ -241,13 +233,10 @@ void quit() //FARE LE FUNZIONI CON IL CONTROLLO INCORPORATO
     
     //////// SHARED MEMORY /////////
 
-    free_shared_memory(p); //table? per forza!!!
+    free_shared_memory(table); 
     remove_shared_memory(shmidServer);
-
     remove_semaphore(semid);
-
-    // terminate the process
-    _exit(0);
+   
 }
 
 unsigned int updateTable(struct Request request, int semid, int size)
@@ -260,13 +249,8 @@ unsigned int updateTable(struct Request request, int semid, int size)
      //cerco di prendere il semaforo con -1
 
     //P(MUTEX)
-    semOp(semid, 0, -1);  
-
-    //mi attacco alla memoria
-    // attach the shared memory segment, ho ottenuto il puntantore alla zona di memoria condivisa
-    printf("<Server> attaching the shared memory segment...\n");    
-    struct keyTable *table = (struct keyTable*)get_shared_memory(shmidServer, 0);
-
+    semOp(semid, 0, -1);   
+    
     // ---- CREAZIONE CHIAVE -----
     do
     {
@@ -275,7 +259,7 @@ unsigned int updateTable(struct Request request, int semid, int size)
         else
             return 0;   //service not valid, key = 0
     }
-    while(!isUniqueKey(key, table, size)); //funzione che checkka in memoria condivisa e torna un bool per vedere se la chiave esiste
+    while(!isUniqueKey(key,size)); //funzione che checkka in memoria condivisa e torna un bool per vedere se la chiave esiste
 
     //qua siamo sicuri che la chiave è univoca
     //la inserisco nella tabella con timestamp e id
@@ -294,8 +278,10 @@ unsigned int updateTable(struct Request request, int semid, int size)
             printf("MEMORIA ESAURITA\n");
         }
     }
-    
-    free_shared_memory(table);  //mi stacco dalla memoria
+
+    //mollo semaforo +1
+    //V(MUTEX)
+    semOp(semid, 0, 1);
 
     return key;
 }
@@ -308,7 +294,7 @@ unsigned int updateTable(struct Request request, int semid, int size)
     This function access to the shared memory to check if the key is
     unique. It uses an already created semaphore (by the server).
 */
-bool isUniqueKey(unsigned int key, struct keyTable *table, int size)
+bool isUniqueKey(unsigned int key, int size)
 {
     unsigned int i = 0;
     //scorro tutta la memoria condivisa
@@ -374,15 +360,6 @@ bool isServiceValid(char *str)
     return false;
 }
 
-//--- NON SERVE IN SERVER, O NO? ---
-/*void stringInput(char* msg, char* str, int dim_string)
-{
-    char input[DIM_STRING + 1] = {""};
-
-    printf("%s", msg);
-    scanf(" %255[^\n]s", input);			//regex per prendere gli spazi, 255 char al max, e per ignorare i \n
-    strncpy(str, input, dim_string);
-}*/
 
 void toUpperCase(char *str)
 {
@@ -536,59 +513,36 @@ void remove_shared_memory(int shmid)
         printf("shmctl failed");
 }
 
-void signalsHandler(int sig) 
+void signalsHandlerKeyManager(int sig) 
 {
-    //P(MUTEX)  ***prendiamo il semaforo!!! importante!!!
-    semOp(semid, 0, -1);
-
-    //mi attacco alla memoria
-    // attach the shared memory segment, ho ottenuto il puntantore alla zona di memoria condivisa
-    printf("<Server> attaching the shared memory segment...\n");    
-    struct keyTable *table = (struct keyTable*)get_shared_memory(shmidServer, 0);
-
     switch(sig)
     {
         case SIGALRM:   //è solo il figlio
         {
+			//P(MUTEX)  ***prendiamo il semaforo!!! importante!!!
+    		semOp(semid, 0, -1);
             printf("Pid che chiama sig alarm (deve essere quello del figlio!!): %i\n", getpid()); //deve essere quello del figlio!!!
 
-            checkTableEvery30Sec(table, TABLE_SIZE);
+            checkTableEvery30Sec(TABLE_SIZE);
 
             alarm(TIME_ALARM);
 
             if(signal(SIGALRM, signalsHandler) == SIG_ERR) 
                 printf("\nProblema");
 
+			//V(MUTEX)
+    		semOp(semid, 0, 1);
             break;
         }
         case SIGTERM:
         {
-            printf("Sono %i e sto per killare qualcosa\n", getpid());
-
-            if(keyManager == 0)               //ovvero è il figlio
-            {
-                exit(0);                      //mi suicido
-                //kill(getpid(), SIGQUIT);    //mi suicido
-            }
-            else                              //ovvero il pid tornato è quello del figlio!
-            {
-                kill(keyManager, SIGTERM);    //figlio ko
-                //bisogna inserire la quit() prima della exit
-                exit(0);
-                //kill(getpid(), SIGTERM);    //mi suicido (il padre)
-            }
-
+        	exit(0);                    
             break;
         }
-    }        
-
-    free_shared_memory(table);  //mi stacco dalla memoria
-    
-    //V(MUTEX)
-    semOp(semid, 0, 1);
+    }         
 }
 
-void checkTableEvery30Sec(struct keyTable *table, int size)
+void checkTableEvery30Sec(int size)
 {
     int i = 0;
 
@@ -602,4 +556,22 @@ void checkTableEvery30Sec(struct keyTable *table, int size)
             table[i].timestamp = 0;
         }
     }  
+}
+
+
+void signalsHandlerServer(int sig) 
+{
+    switch(sig)
+    {
+        case SIGTERM:
+        {
+            printf("Sono %i e sto per killare qualcosa\n", getpid());
+          
+			kill(keyManager, SIGTERM);    //figlio ko
+			quit(); // close FIFO, shared memory and semaphore.
+			exit(0);
+			
+            break;
+        }
+    }        
 }
