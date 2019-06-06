@@ -35,21 +35,12 @@ int main(void)
 	//-------------- RICHIESTA DATI
 	stringInput("Inserire l'id: \n", id, DIM_STRING);
 	stringInput("\nInserire il servizio desiderato: Stampa, Salva, Invia\n", service, DIM_STRING);
-	/**
-	do
-	{
-		stringInput("\nInserire il servizio desiderato: Stampa, Salva, Invia\n", service, DIM_STRING);
-		if(!isServiceValid(service))
-			printf("Errore! Servizio non valido");	
-	}
-	while (!isServiceValid(service));
-	*/
+	
 	strncpy(clientRequest.id,id, DIM_STRING);
 	strncpy(clientRequest.service,service, DIM_STRING);
 	//--------------- APERTURA FIFOCLIENT
 
-	//inizio pezzo nuovo 24 maggio
-	// Step-1: The client makes a FIFO in /tmp
+	// Step-1: The client makes a FIFO
     char path2ClientFIFO [256];
     sprintf(path2ClientFIFO, "%s%s", baseClientFIFO, id);
 
@@ -90,7 +81,7 @@ int main(void)
         printf("read failed");
 
     // Step-6: The client prints the result on terminal
-    printf("<Client> The server sent the result: %d\n", serverResponse.key);
+    printf("<Client> The server sent the result: %u\n", serverResponse.key);
 
     // Step-7: The client closes its FIFO
     if (close(serverFIFO) != 0 || close(clientFIFO) != 0)
