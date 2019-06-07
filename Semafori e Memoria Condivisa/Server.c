@@ -8,12 +8,10 @@
 #include <limits.h>
 #include <time.h>
 #include <signal.h>
-
 #include <sys/shm.h>
 #include <sys/sem.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-
 
 #define DIM_STRING 255 //dimensione massima della stringa--> scelta progettuale 
 #define STAMPA_MASK 1
@@ -85,7 +83,7 @@ struct keyTable *table;
 // the file descriptor entry for the FIFO
 int serverFIFO, serverFIFO_extra;
 
-int main (void) 
+int main (int argc, char *argv[]) 
 {
     struct Request clientRequest;
     int byteRead = -1;
@@ -134,7 +132,6 @@ int main (void)
     //setto handler in caso di sigterm (ricorda che prima dobbiamo aprire fifo, memoria e semafori, altrimenti alla chiusura non si chiude tutto bene)
     if(signal(SIGTERM, signalsHandler) == SIG_ERR) 
         printf("\nProblema\n");
-
 
     // create a semaphore 
     printf("<Server> creating a semaphore...\n");
@@ -261,7 +258,7 @@ unsigned int updateTable(struct Request request, int size)
     // forse qui o forse in isuniquekey
     //-1 sem
     //prendo il semaforo
-     //cerco di prendere il semaforo con -1
+    //cerco di prendere il semaforo con -1
     
     // ---- CREAZIONE CHIAVE -----
     do
@@ -567,22 +564,6 @@ void signalsHandler(int sig)
     }         
 }
 
-/*void signalsHandlerServer(int sig) 
-{
-    switch(sig)
-    {
-        case SIGTERM:
-        {
-            printf("Sono %i e sto per killare qualcosa\n", getpid());
-          
-			kill(keyManager, SIGTERM);    //figlio ko
-			quit(); // close FIFO, shared memory and semaphore.
-			exit(0);
-			
-            break;
-        }
-    }        
-}*/
 
 void checkTableEvery30Sec(int size)
 {
