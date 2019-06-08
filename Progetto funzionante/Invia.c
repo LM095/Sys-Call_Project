@@ -18,8 +18,8 @@ struct mymsg
 
 int main (int argc, char *argv[]) 
 {
-    struct  mymsg m;
-    int msgId;
+    struct mymsg m = {0};
+    int msgId = 0;
     printf("Hi, I'm Invia program!\n");
 
     msgId = mssget(MSG_KEY, IPC_CREAT | S_IRUSR | S_IWUSR);

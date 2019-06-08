@@ -63,7 +63,7 @@ void *get_shared_memory(int shmid, int shmflg);
 
 int main(int argc, char *argv[])
 {
-    char id[DIM_STRING + 1] = {""};
+    char id[DIM_STRING + 1] = {0};  //me l'ha detto sumo
     unsigned int key = 0;
     int service = 0;
     
@@ -75,8 +75,10 @@ int main(int argc, char *argv[])
     
     // create a semaphore 
     printf("<ClientExec> creating a semaphore...\n");
+
     semid = create_sem_set(SEM_KEY);
     semOp(semid, 0, 1);
+
     /////////// SHARED MEMORY //////////////
     size_t size = sizeof(struct keyTable) * TABLE_SIZE;
 
@@ -87,8 +89,7 @@ int main(int argc, char *argv[])
     table = (struct keyTable*)get_shared_memory(shmidClientExec, 0);
 
     if(signal(SIGTERM, signalsHandler) == SIG_ERR) //catch sigterm to terminate gracefully and deatach the shmem/sem
-        printf("\nProblema\n");
-    
+        printf("\nProblema\n");    
  
     /////////// PARAM ///////////
     strcpy(id, argv[1]);

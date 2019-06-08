@@ -4,7 +4,7 @@
 int main (int argc, char *argv[]) 
 {
     printf("Hi, I'm Stampa program!\n\n");
-    int i = 0;  //to not printf the program name
+    int i = 0; 
     
     while(argv[i])
     {

@@ -13,12 +13,12 @@ int main (int argc, char *argv[])
 {
     printf("Hi, I'm Salva program!\n");
 
-    char buffer[MAX_READ] = " ";    
-    char nameFile[MAX_READ + TXT_EXT] = "  ";    //+5 = .txt\0
-    int i = 0, j = 0, w = 0;
+    char buffer[MAX_READ] = {0};   //me l'ha detto sumo
+    char nameFile[MAX_READ + TXT_EXT] = {0};    //me l'ha detto sumo //+5 = .txt\0
+    int i = 0;
+    int j = 0;
+    int w = 0;
     int destinazione = 0;
-    
-    strncpy(nameFile, argv[0], strlen(argv[0]));
 
     for(i = 0; i < argc; i++)
     {
@@ -31,7 +31,8 @@ int main (int argc, char *argv[])
         w++;
     }
     buffer[w]= '\0';
-
+    
+    strncpy(nameFile, argv[0], strlen(argv[0]));
     strncat(nameFile, ".txt", TXT_EXT);
 
     destinazione = open(nameFile, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
