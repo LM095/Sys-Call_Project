@@ -57,13 +57,14 @@ void remove_semaphore(int semid);
 int alloc_shared_memory(key_t shmKey, size_t size);
 void free_shared_memory(void *ptr_sh);
 void remove_shared_memory(int shmid);  
-void remove_semaphore(int semid);
 bool isValidKey(char id[], unsigned int key, int size);
+void signalsHandler(int sig);
+void *get_shared_memory(int shmid, int shmflg); 
  
 
 int main(int argc, char *argv[])
 {
-    char id[DIM_STRING + 1] = {};
+    char id[DIM_STRING + 1] = {""};
     unsigned int key = 0;
     int service = 0;
     
@@ -105,11 +106,10 @@ int main(int argc, char *argv[])
     else
     {
         service = keyDecrypter(key);
+        argv += 3;  //exclude the program name, user, key
         // procedura per servizio richiesto
         switch(service)
         {
-            argv += 3;  //exclude the program name, user, key
-
             case STAMPA_MASK:
             {                
                 execvp("Stampa.c", argv);
@@ -117,12 +117,14 @@ int main(int argc, char *argv[])
             }
             case SALVA_MASK:
             {
-                execvp("Salva.c", argv);
+                //execvp("Salva.c", argv);
+                printf("Partirà Salva\n");
                 break;
             }
             case INVIA_MASK:
             {
-                execvp("Invia.c", argv);
+                //execvp("Invia.c", argv);
+                 printf("Partirà invia\n");
                 break;
             }
             default:
@@ -147,7 +149,7 @@ bool isValidKey(char id [], unsigned int key, int size)
 
     for(i = 0; i < size ; i++)
     {
-        if((strcmpr(table[i].user, id) == 0) && table[i].key == key)
+        if((strcmp(table[i].user, id) == 0) && table[i].key == key)
         {
             result = true;
             
@@ -280,12 +282,6 @@ void remove_shared_memory(int shmid)
     // delete the shared memory segment
     if (shmctl(shmid, IPC_RMID, NULL) == -1)
         printf("shmctl failed\n");
-}
-
-void remove_semaphore(int semid)
-{
-    if(semctl(semid, 0, IPC_RMID, NULL) == -1)
-        printf("Error closing semaphore\n");
 }
 
 void quit() //FARE LE FUNZIONI CON IL CONTROLLO INCORPORATO

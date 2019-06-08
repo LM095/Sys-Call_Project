@@ -130,7 +130,7 @@ int main(int argc, char *argv[])
             case INVIA_MASK:
             {
                 printf("ESEGUO L'INVIO:\n"); 
-                //execvp("Invia.c", argv);
+                execv("invia", argv);
                 break;
             }
             default:
