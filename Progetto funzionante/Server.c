@@ -20,6 +20,7 @@
 #define SHM_KEY 10
 #define SEM_KEY 20
 #define TABLE_SIZE 1024
+#define USED_KEY_ARRAY_SIZE 2048    //twice the shared mem
 #define TIME_ALARM 30
 
 ///////// STRUCT /////////////////////////
@@ -52,8 +53,8 @@ union semun
 ///////// FUNCTIONS DEFINITIONS /////////
 
 void quit(); 
-unsigned int updateTable(struct Request request, int size);
-bool isUniqueKey(unsigned int key, int size);
+unsigned int updateTable(struct Request request, unsigned int usedKeys[], int tableSize, int usedKeysSize);
+bool isUniqueKey(unsigned int key, unsigned int usedKeys[], int tableSize, int usedKeysSize);
 void sendResponse(struct Request *request, unsigned int key);
 bool isServiceValid(char *str);
 void toUpperCase(char *str);
@@ -89,6 +90,7 @@ int main (void)
     int byteRead = -1;
     unsigned int key = 0;
     sigset_t setSig; 
+    unsigned int usedKeys[TABLE_SIZE] = {0};    //contains old keys
 
     printf("<Server> Making FIFO...\n");
     // FIFO with the following permissions:
@@ -210,7 +212,7 @@ int main (void)
                 {
                     //P(MUTEX)
                     semOp(semid, 0, -1);   
-                    key = updateTable(clientRequest, TABLE_SIZE);
+                    key = updateTable(clientRequest, usedKeys, TABLE_SIZE, USED_KEY_ARRAY_SIZE);
                     //mollo semaforo +1
                     //V(MUTEX)
                     semOp(semid, 0, 1);
@@ -247,11 +249,10 @@ void quit() //FARE LE FUNZIONI CON IL CONTROLLO INCORPORATO
 
     free_shared_memory(table); 
     remove_shared_memory(shmidServer);
-    remove_semaphore(semid);
-   
+    remove_semaphore(semid);   
 }
 
-unsigned int updateTable(struct Request request, int size)
+unsigned int updateTable(struct Request request, unsigned int usedKeys[], int tableSize, int usedKeysSize)
 {
     unsigned int key = 0;
     int i = 0;
@@ -268,12 +269,11 @@ unsigned int updateTable(struct Request request, int size)
         else
             return 0;   //service not valid, key = 0
     }
-    while(!isUniqueKey(key, size)); //funzione che checkka in memoria condivisa e torna un bool per vedere se la chiave esiste
+    while(!isUniqueKey(key, usedKeys, tableSize, usedKeysSize)); //funzione che checkka in memoria condivisa e torna un bool per vedere se la chiave esiste
 
     //qua siamo sicuri che la chiave è univoca
     //la inserisco nella tabella con timestamp e id
-
-    for(i = 0; i < size; i++)
+    for(i = 0; i < tableSize; i++)
     {
         if(table[i].key == 0)
         {
@@ -284,12 +284,21 @@ unsigned int updateTable(struct Request request, int size)
         }  
     }
 
-    if(i==size)
+    if(i == tableSize)
+        printf("MEMORIA ESAURITA\n");    
+    else
     {
-        printf("MEMORIA ESAURITA\n");
+        //la inserisco nell'array delle chiavi create:
+        for(i = 0; i < usedKeysSize; i++)
+        {
+            if(usedKeys[i] == 0)
+            {
+                usedKeys[i] = key;
+                break;
+            }  
+        }
     }
     
-
     return key;
 }
 
@@ -301,15 +310,24 @@ unsigned int updateTable(struct Request request, int size)
     This function access to the shared memory to check if the key is
     unique. It uses an already created semaphore (by the server).
 */
-bool isUniqueKey(unsigned int key, int size)
+bool isUniqueKey(unsigned int key, unsigned int usedKeys[], int tableSize, int usedKeysSize)
 {
     int i = 0;
+
+    //scorro l'array delle chiavi create:
+    for(i = 0; i < usedKeysSize; i++)
+    {
+        if(usedKeys[i] == key)
+            return false;
+    }
+
     //scorro tutta la memoria condivisa
-    for(i = 0; i < size; i++)
+    for(i = 0; i < tableSize; i++)
     {
         if(table[i].key == key)
             return false;
-    } 
+    }
+     
     return true;
 }
 
@@ -457,7 +475,6 @@ void semOp (int semid, unsigned short sem_num, short sem_op)
     sop.sem_num = sem_num;  //passa; numero del semaforo dentro array dei semafori
     sop.sem_op = sem_op;    //passa; operation to be performed
     sop.sem_flg = 0;        //  
-
 
     if (semop(semid, &sop, 1) == -1)
         printf("semop failed\n");

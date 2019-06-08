@@ -54,8 +54,7 @@ int keyDecrypter(unsigned int key);
 int create_sem_set(key_t semkey);
 void semOp (int semid, unsigned short sem_num, short sem_op);
 int alloc_shared_memory(key_t shmKey, size_t size);
-void free_shared_memory(void *ptr_sh);
-void remove_shared_memory(int shmid);  
+void free_shared_memory(void *ptr_sh); 
 void remove_semaphore(int semid);
 bool isValidKey(char id[], unsigned int key, int size);
 void free_shared_memory(void *ptr_sh); 
@@ -77,7 +76,7 @@ int main(int argc, char *argv[])
     // create a semaphore 
     printf("<ClientExec> creating a semaphore...\n");
     semid = create_sem_set(SEM_KEY);
-    semOp(semid,0,1);
+    semOp(semid, 0, 1);
     /////////// SHARED MEMORY //////////////
     size_t size = sizeof(struct keyTable) * TABLE_SIZE;
 
@@ -90,6 +89,7 @@ int main(int argc, char *argv[])
     if(signal(SIGTERM, signalsHandler) == SIG_ERR) //catch sigterm to terminate gracefully and deatach the shmem/sem
         printf("\nProblema\n");
     
+ 
     /////////// PARAM ///////////
     strcpy(id, argv[1]);
     key = strtoul(argv[2], NULL, 10);   //lo converte in long ma noi abbiamo soli int (vedere se va bene)! da verificare se 10 va bene (è la base in teoria) 
@@ -102,12 +102,15 @@ int main(int argc, char *argv[])
     if(!isValidKey(id, key, TABLE_SIZE))
     {
         printf("Invalid key for the requested service\n");
+        free_shared_memory(table);      //mi stacco dalla sh mem
         return 0;
     }
     else
-    {
+    {       
+        free_shared_memory(table);      //mi stacco dalla sh mem
         service = keyDecrypter(key);
         argv += 3;  //exclude the program name, user, key
+
         // procedura per servizio richiesto
         switch(service)
         {
@@ -120,7 +123,7 @@ int main(int argc, char *argv[])
             case SALVA_MASK:
             {
                 printf("ESEGUO IL SALVATAGGIO:\n"); 
-                execv("salva", argv-1);
+                execv("salva", argv);
                 break;
             }
             case INVIA_MASK:
@@ -136,7 +139,7 @@ int main(int argc, char *argv[])
             }
         }
     }
-
+   
     return 0;
 }
 
@@ -279,20 +282,11 @@ void free_shared_memory(void *ptr_sh)
         printf("shmdt failed\n");
 }
 
-void remove_shared_memory(int shmid) 
-{
-    // delete the shared memory segment
-    if (shmctl(shmid, IPC_RMID, NULL) == -1)
-        printf("shmctl failed\n");
-}
-
-
 void quit() //FARE LE FUNZIONI CON IL CONTROLLO INCORPORATO
 {    
     //////// SHARED MEMORY AND SEMAPHORE /////////
 
     free_shared_memory(table); 
-    remove_shared_memory(shmidClientExec);
     remove_semaphore(semid);   
 }
 
