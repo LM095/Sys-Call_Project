@@ -552,7 +552,7 @@ void signalsHandler(int sig)
 
             printf("Pid che chiama sig alarm (deve essere quello del figlio!!): %i\n", getpid()); //deve essere quello del figlio!!!
 
-            checkTableEvery30Sec(TABLE_SIZE);
+            checkTableEvery30Sec(TABLE_SIZE);        
 
             alarm(TIME_ALARM);
 
@@ -560,10 +560,10 @@ void signalsHandler(int sig)
             {
                 printf("\nProblema");
             } 
-			
+
             //V(MUTEX)
-    		semOp(semid, 0, 1);
-            
+    		semOp(semid, 0, 1);    
+
             break;
         }
         case SIGTERM:

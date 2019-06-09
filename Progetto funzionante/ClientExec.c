@@ -76,9 +76,9 @@ int main(int argc, char *argv[])
     // create a semaphore 
     printf("<ClientExec> creating a semaphore...\n");
 
+    //recupeo l'id del semaforo usato in Server e KeyManager
     semid = create_sem_set(SEM_KEY);
-    semOp(semid, 0, 1);
-
+   
     /////////// SHARED MEMORY //////////////
     size_t size = sizeof(struct keyTable) * TABLE_SIZE;
 
@@ -204,13 +204,6 @@ int create_sem_set(key_t semkey)
                                                                     //S_IWUSR: write for owner
     if (semid == -1)
         printf("semget failed\n");
-
-    // Initialize the semaphore set
-    union semun arg;
-    arg.val = 0;
-
-    if (semctl(semid, 0, SETVAL, arg) == -1)
-        printf("semctl SETALL failed\n");
 
     return semid;
 }
