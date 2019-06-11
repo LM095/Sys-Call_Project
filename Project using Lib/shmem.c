@@ -1,55 +1,48 @@
 #include "shmem.h"
 
-int alloc_shared_memory(key_t shmKey, size_t size) 
-{
-    /*
-        get, or create, a shared memory segment
+/*
+    Get or create a shared memory segment
 
-        param1: key della mem condivsa
-        param2: specifica la size che dobbiamo allocare.
-                se usiamo shmget per allocare memoria già esistente (quindi una get)
-                allora questa non deve superare le dimensione della mem già allocata
-        param3: flag per la creazione della mem
-                se la mem esiste già, si usano per un check sulla mem condivisa
-    */
-    int shmid = shmget(shmKey, size, IPC_CREAT | S_IRUSR | S_IWUSR);
+    param 1: key sh mem
+    param 2: specify size to allocate. If we use shmget to get an existing mem segment, 
+             then the size shouldn't be bigger than the already allocated mem
+*/
+int allocSharedMemory(key_t shmKey, size_t size) 
+{
+    int shmid = shmget(shmKey, size, IPC_CREAT | S_IRUSR | S_IWUSR); //flags: if the mem is already existing, it performes a check.
+
     if (shmid == -1)
-        printf("shmget failed\n");
+        printf("Failed allocating shmem\n");
 
     return shmid;
 }
 
-void *get_shared_memory(int shmid, int shmflg) 
+/*
+    attach the shared memory
+
+    param 1: key sh mem
+    param 2: flags
+*/
+void *getSharedMemory(int shmid, int shmflg) 
 { 
-    /*
-        attach the shared memory
-        torna il puntatore all'ind di mem al quale la mem condivisa si è attaccata
-        o -1 se ci sono errori
-    
-        param 1: key della mem condivisa (sempre quella)
-        param 2: NULL: sceglie il kernel dove mettere il nuovo pezzo. Questo param e il
-                       successivo sono ignorati
-                 diverso da NULL: lo diciamo noi (attenzione, meno portabile!)
-        param 3: flag che specificano i permessi, ma noi qua non abbiamo flag 
-                 qua è 0, perchè tanto il precedente è NULL e viene ignorato
-    */
-    void *ptr_sh = shmat(shmid, NULL, shmflg);
-    if (ptr_sh == (void *)-1)
-        printf("shmat failed\n");
+    void *ptrsh = shmat(shmid, NULL, shmflg);   //param 2: if NULL, the kernel decides where to put the pointer
 
-    return ptr_sh;
+    if (ptrsh == (void *)-1)
+        printf("Failed getting shmem\n");
+
+    return ptrsh;
 }
 
-void free_shared_memory(void *ptr_sh) 
+void freeSharedMemory(void *ptr_sh) 
 {
-    // detach the shared memory segments
+    //detach the shared memory segments
     if (shmdt(ptr_sh) == -1)
-        printf("shmdt failed\n");
+        printf("Failed deataching shmem\n");
 }
 
-void remove_shared_memory(int shmid) 
+void removeSharedMemory(int shmid) 
 {
-    // delete the shared memory segment
+    //delete the shared memory segment
     if (shmctl(shmid, IPC_RMID, NULL) == -1)
-        printf("shmctl failed\n");
+        printf("Failed removing shmem\n");
 }

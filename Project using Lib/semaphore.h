@@ -1,10 +1,9 @@
-#ifndef SEMAPHORE_H
-#define SEMAPHORE_H
-
 #include <sys/sem.h>
 #include <stdlib.h>
 #include <sys/stat.h>
 
+#ifndef SEMAPHORE_H
+#define SEMAPHORE_H
 #define SEM_KEY 20
 
 union semun 
@@ -14,8 +13,10 @@ union semun
     unsigned short * array;
 };
 
-int create_sem_set(key_t semkey); 
-void semOp (int semid, unsigned short sem_num, short sem_op); 
-void remove_semaphore(int semid);
+void removeSemaphore(int semid);
+void vMutex (int semid, unsigned short sem_num);
+void pMutex (int semid, unsigned short sem_num); 
+int createSemSet(key_t semkey);
+int getSemSet(key_t semkey);
 
 #endif

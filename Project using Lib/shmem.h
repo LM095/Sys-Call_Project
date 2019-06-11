@@ -1,11 +1,12 @@
-#ifndef SHMEM_H
-#define SHMEM_H
-
 #include <sys/shm.h>
 #include <stdlib.h>
 #include <sys/stat.h>
 
+#ifndef SHMEM_H
+#define SHMEM_H
+
 #define DIM_STRING 255
+#define SHM_KEY 10
 
 struct keyTable
 {
@@ -14,9 +15,9 @@ struct keyTable
     time_t timestamp;
 };
 
-void free_shared_memory(void *ptr_sh);
-void remove_shared_memory(int shmid); 
-void *get_shared_memory(int shmid, int shmflg); 
-int alloc_shared_memory(key_t shmKey, size_t size); 
+int allocSharedMemory(key_t shmKey, size_t size);
+void *getSharedMemory(int shmid, int shmflg);
+void freeSharedMemory(void *ptr_sh);
+void removeSharedMemory(int shmid);  
 
 #endif

@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <ctype.h>		//lib per funzione upper()
+#include <ctype.h>		//lib for Upper() fun
 #include <unistd.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -13,43 +13,19 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#define DIM_STRING 255 //dimensione massima della stringa--> scelta progettuale 
+#include "semaphore.h"
+#include "shmem.h"
+
+/************* PREPROCESSOR DEFINE *************/
+
+#define DIM_STRING 255              //max dim of Strings 
 #define STAMPA_MASK 1
 #define SALVA_MASK 2
 #define INVIA_MASK 3
-#define SHM_KEY 10
-#define SEM_KEY 20
 #define TABLE_SIZE 1024
 
-struct Request
-{
-	char id[DIM_STRING + 1];
-    unsigned int key;
-	char service[DIM_STRING + 1];
-};
+/************* FUNCTIONS DEFINITIONS *************/
 
-struct keyTable
-{
-    char user[DIM_STRING + 1];
-    unsigned int key;
-    time_t timestamp;
-};
-
-union semun 
-{
-    int val;
-    struct semid_ds * buf;
-    unsigned short * array;
-};
-
-/////////////////// VARIABILI GLOBALI ///////////////////
-int semid;
-int shmidClientExec;
-pid_t keyManager;
-struct keyTable *table;
-//////////////////////////////////////////////////////////
-
-///////////////////DEFINIZIONE FUNZIONI ////////////////
 int keyDecrypter(unsigned int key);
 int create_sem_set(key_t semkey);
 void semOp (int semid, unsigned short sem_num, short sem_op);
@@ -61,9 +37,16 @@ void free_shared_memory(void *ptr_sh);
 void signalsHandler(int sig); 
 void *get_shared_memory(int shmid, int shmflg);
 
+/*************  GLOBAL VARIABLES *************/
+
+int semid;
+int shmidClientExec;
+pid_t keyManager;
+struct keyTable *table;
+
 int main(int argc, char *argv[])
 {
-    char id[DIM_STRING + 1] = {0};  //me l'ha detto sumo
+    char id[DIM_STRING + 1] = {0};
     unsigned int key = 0;
     int service = 0;
     
@@ -73,69 +56,61 @@ int main(int argc, char *argv[])
         return 0;
     }       
     
-    // create a semaphore 
-    printf("<ClientExec> creating a semaphore...\n");
-
-    //recupeo l'id del semaforo usato in Server e KeyManager
+    printf("<ClientExec> Creating a semaphore...\n");
     semid = create_sem_set(SEM_KEY);
    
-    /////////// SHARED MEMORY //////////////
+    /************* SHARED MEMORY *************/
     size_t size = sizeof(struct keyTable) * TABLE_SIZE;
 
-    //allocate a shared memory segment
-    printf("<Server> allocating a shared memory segment...\n");
-
+    printf("<ClientExec> Getting a shared memory segment...\n");
     shmidClientExec = alloc_shared_memory(SHM_KEY, size);
     table = (struct keyTable*)get_shared_memory(shmidClientExec, 0);
 
-    if(signal(SIGTERM, signalsHandler) == SIG_ERR) //catch sigterm to terminate gracefully and deatach the shmem/sem
-        printf("\nProblema\n");    
- 
-    /////////// PARAM ///////////
+    if(signal(SIGTERM, signalsHandler) == SIG_ERR) //catch sigterm to terminate gracefully and deatach the shmem/sem 
+        printf("\nProblem setting Sigterm Handler\n");
+        
+    /************* PARAM RECEIVER *************/
     strcpy(id, argv[1]);
-    key = strtoul(argv[2], NULL, 10);   //lo converte in long ma noi abbiamo soli int (vedere se va bene)! da verificare se 10 va bene (è la base in teoria) 
+    key = strtoul(argv[2], NULL, 10);   //str to unsigned long
 
-    printf("\nchiave prima della trasformazione: %s\n", argv[2]);
-    printf("\nchiave dopo la trasformazione: %u\n\n", key);
-
-    ////////// CHECK IN MEMORIA ////////////
-    
+    /************* SHARED MEMORY CHECK *************/    
     if(!isValidKey(id, key, TABLE_SIZE))
     {
         printf("Invalid key for the requested service\n");
-        free_shared_memory(table);      //mi stacco dalla sh mem
+        free_shared_memory(table);
         return 0;
     }
     else
     {       
-        free_shared_memory(table);      //mi stacco dalla sh mem
+        free_shared_memory(table);
+
         service = keyDecrypter(key);
         argv += 3;  //exclude the program name, user, key
 
-        // procedura per servizio richiesto
+        /************* MAIN PROGRAM *************/
         switch(service)
         {
             case STAMPA_MASK:
             {          
-                printf("ESEGUO LA STAMPA:\n");      
+                printf("<ClientExec> Calling Stampa program...\n");      
                 execv("stampa", argv);
                 break;
             }
             case SALVA_MASK:
             {
-                printf("ESEGUO IL SALVATAGGIO:\n"); 
+                printf("<ClientExec> Calling Salva program...\n");  
                 execv("salva", argv);
                 break;
             }
             case INVIA_MASK:
             {
-                printf("ESEGUO L'INVIO:\n"); 
+                printf("<ClientExec> Calling Invia program...\n");  
                 execv("invia", argv);
                 break;
             }
             default:
             {
-                printf("\nInvalid service\n");
+                printf("Invalid service\n");
                 return 0;
             }
         }
@@ -144,14 +119,12 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-
 bool isValidKey(char id [], unsigned int key, int size)
 {
     int i = 0;
     bool result;
     
-    //P(mutex)
-    semOp(semid, 0, -1);
+    pMutex(semid, 0);
 
     for(i = 0; i < size ; i++)
     {
@@ -171,13 +144,11 @@ bool isValidKey(char id [], unsigned int key, int size)
     if(i == size)
         result = false;
 
-    //V(mutex)
-    semOp(semid, 0, 1);
+    vMutex(semid, 0);
     
     return result;
 }
 
-//codice id utente, chiave, lista servizio richiesto
 int keyDecrypter(unsigned int key)
 {
     if((key & INVIA_MASK) == INVIA_MASK)
@@ -196,92 +167,11 @@ int keyDecrypter(unsigned int key)
         return 0;
 }
 
-int create_sem_set(key_t semkey) 
-{
-    // Create a semaphore set with 1 semaphore
-    int semid = semget(semkey, 1, IPC_CREAT | S_IRUSR | S_IWUSR);   //IPC_CREAT: Create entry if key does not exist
-                                                                    //S_IRUSR: read for owner
-                                                                    //S_IWUSR: write for owner
-    if (semid == -1)
-        printf("semget failed\n");
-
-    return semid;
-}
-
-void semOp (int semid, unsigned short sem_num, short sem_op) 
-{
-    //struct sembuf sop = {.sem_num = sem_num, .sem_op = sem_op, .sem_flg = 0}; //assegnamento
-    struct sembuf sop;
-
-    sop.sem_num = sem_num;  //passa; numero del semaforo dentro array dei semafori
-    sop.sem_op = sem_op;    //passa; operation to be performed
-    sop.sem_flg = 0;        //  
-
-
-    if (semop(semid, &sop, 1) == -1)
-        printf("semop failed\n");
-}
-
-void remove_semaphore(int semid)
-{
-    if(semctl(semid, 0, IPC_RMID, NULL) == -1)
-        printf("Error closing semaphore\n");
-}
-
-// sta dentro la libreria shared_memory.h/c
-int alloc_shared_memory(key_t shmKey, size_t size) 
-{
-    /*
-        get, or create, a shared memory segment
-
-        param1: key della mem condivsa
-        param2: specifica la size che dobbiamo allocare.
-                se usiamo shmget per allocare memoria già esistente (quindi una get)
-                allora questa non deve superare le dimensione della mem già allocata
-        param3: flag per la creazione della mem
-                se la mem esiste già, si usano per un check sulla mem condivisa
-    */
-    int shmid = shmget(shmKey, size, IPC_CREAT | S_IRUSR | S_IWUSR);
-    if (shmid == -1)
-        printf("shmget failed\n");
-
-    return shmid;
-}
-
-void *get_shared_memory(int shmid, int shmflg) 
-{ 
-    /*
-        attach the shared memory
-        torna il puntatore all'ind di mem al quale la mem condivisa si è attaccata
-        o -1 se ci sono errori
-    
-        param 1: key della mem condivisa (sempre quella)
-        param 2: NULL: sceglie il kernel dove mettere il nuovo pezzo. Questo param e il
-                       successivo sono ignorati
-                 diverso da NULL: lo diciamo noi (attenzione, meno portabile!)
-        param 3: flag che specificano i permessi, ma noi qua non abbiamo flag 
-                 qua è 0, perchè tanto il precedente è NULL e viene ignorato
-    */
-    void *ptr_sh = shmat(shmid, NULL, shmflg);
-    if (ptr_sh == (void *)-1)
-        printf("shmat failed\n");
-
-    return ptr_sh;
-}
-
-void free_shared_memory(void *ptr_sh) 
-{
-    // detach the shared memory segments
-    if (shmdt(ptr_sh) == -1)
-        printf("shmdt failed\n");
-}
-
-void quit() //FARE LE FUNZIONI CON IL CONTROLLO INCORPORATO
+void quit() 
 {    
-    //////// SHARED MEMORY AND SEMAPHORE /////////
-
-    free_shared_memory(table); 
-    remove_semaphore(semid);   
+    /************* CLOSE SHARED MEMORY AND SEMAPHORE *************/
+    freeSharedMemory(table); 
+    removeSemaphore(semid);   
 }
 
 void signalsHandler(int sig) 
@@ -290,7 +180,7 @@ void signalsHandler(int sig)
     {
         case SIGTERM:
         {   
-            quit(); // close shared memory and semaphore.
+            quit();     //close shared memory and semaphore.
             exit(0);
             break;
         }

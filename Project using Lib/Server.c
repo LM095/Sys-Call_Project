@@ -1,29 +1,29 @@
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
 #include <stdbool.h>
-#include <ctype.h>		//lib per funzione upper()
+#include <ctype.h>		//lib for Upper() fun
 #include <unistd.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <time.h>
 #include <signal.h>
-#include <sys/shm.h>
-#include <sys/sem.h>
 #include <sys/types.h>
-#include <sys/stat.h>
 
-#define DIM_STRING 255 //dimensione massima della stringa--> scelta progettuale 
+#include "semaphore.h"
+#include "shmem.h"
+
+/************* PREPROCESSOR DEFINE *************/
+
+#define DIM_STRING 255              //max dim of Strings 
 #define STAMPA_MASK 1
 #define SALVA_MASK 2
 #define INVIA_MASK 3
-#define SHM_KEY 10
-#define SEM_KEY 20
 #define TABLE_SIZE 1024
 #define USED_KEY_ARRAY_SIZE 2048    //twice the shared mem
 #define TIME_ALARM 30
 
-///////// STRUCT /////////////////////////
+/************* STRUCT *************/
+
 struct Request
 {
 	char id[DIM_STRING + 1];
@@ -35,22 +35,7 @@ struct Response
 	unsigned int key;
 };
 
-struct keyTable
-{
-    char user[DIM_STRING + 1];
-    unsigned int key;
-    time_t timestamp;
-};
-
-union semun 
-{
-    int val;
-    struct semid_ds * buf;
-    unsigned short * array;
-};
-
-
-///////// FUNCTIONS DEFINITIONS /////////
+/************* FUNCTIONS DEFINITIONS *************/
 
 void quit(); 
 unsigned int updateTable(struct Request request, unsigned int usedKeys[], int tableSize, int usedKeysSize);
@@ -59,20 +44,14 @@ void sendResponse(struct Request *request, unsigned int key);
 bool isServiceValid(char *str);
 void toUpperCase(char *str);
 unsigned int keyEncrypter(char *service);
-int keyDecrypter(unsigned int key);
-int create_sem_set(key_t semkey); 
-int create_sem_set(key_t semkey); 
-void semOp (int semid, unsigned short sem_num, short sem_op); 
-void free_shared_memory(void *ptr_sh);
-void remove_shared_memory(int shmid); 
-void *get_shared_memory(int shmid, int shmflg); 
-int alloc_shared_memory(key_t shmKey, size_t size); 
 void signalsHandler(int sig); 
-//void signalsHandlerServer(int sig); 
 void checkTableEvery30Sec(int size);
-void remove_semaphore(int semid);
+void keyManagerFun(sigset_t setSig);
+void serverFun(struct Request clientRequest, unsigned int usedKeys[]);
+void closeFifos();
+void removeFifo();
 
-//////////// GLOBAL VARIABLES ///////////
+/*************  GLOBAL VARIABLES *************/
 
 char *path2ServerFIFO = "FIFOSERVER";
 char *baseClientFIFO = "FIFOCLIENT.";
@@ -80,148 +59,80 @@ int semid;
 int shmidServer;
 pid_t keyManager;
 struct keyTable *table;
-
-// the file descriptor entry for the FIFO
-int serverFIFO, serverFIFO_extra;
+int serverFIFO, serverFIFO_extra;   // the file descriptor entry for the FIFO
 
 int main (void) 
 {
     struct Request clientRequest;
-    int byteRead = -1;
-    unsigned int key = 0;
     sigset_t setSig; 
     unsigned int usedKeys[TABLE_SIZE] = {0};    //contains old keys
+    size_t size;                                //table size
+
+    /************* FIFO *************/
 
     printf("<Server> Making FIFO...\n");
-    // FIFO with the following permissions:
-    // user:  read, write
-    // group: write
-    // other: no permission
-    if(mkfifo(path2ServerFIFO, S_IRUSR | S_IWUSR | S_IWGRP) == -1)
-    {
-        printf("mkfifo failed\n");
-    }
+    if(mkfifo(path2ServerFIFO, S_IRUSR | S_IWUSR) == -1)
+        printf("Failed making FIFO\n");
         
     printf("<Server> FIFO %s created!\n", path2ServerFIFO);
 
-    // Wait for client in read-only mode. 
-    // The "open" blocks the calling process
-    // until another process opens the same FIFO in write-only mode
-    printf("<Server> waiting for a client...\n");
-    serverFIFO = open(path2ServerFIFO, O_RDONLY);      //sola lettura
+    printf("<Server> Waiting for a client...\n");
+    serverFIFO = open(path2ServerFIFO, O_RDONLY);
     if(serverFIFO == -1)
-        printf("open read-only failed\n");
+        printf("Open read-only failed\n");
 
-    // non bloccante??????
-    // Open an extra descriptor, so that the server does not see end-of-file
-    // even if all clients closed the write end of the FIFO
-    serverFIFO_extra = open(path2ServerFIFO, O_WRONLY);    //sola scrittura
+    //Extra descriptor: so the server does not see EOF
+    serverFIFO_extra = open(path2ServerFIFO, O_WRONLY);   
     if(serverFIFO_extra == -1)
-        printf("open write-only failed\n");
-    
-    /////////////////////// INZIO SINCRONIZZAZIONE ////////////////////////////////////////
+        printf("Open write-only failed\n");
 
-    // -------- SET SIGNAL MASK --------------
-    //tutta la maschera a 1
+    /************* SYNC *************/
+
+    /************* SIGNALS *************/
+
     sigfillset(&setSig);
-
-    //tolgo il segnale SIGTERM
-    sigdelset(&setSig, SIGTERM);    //non blocca SOLO sigterm
-
-    //sblocco solo sigterm
+    sigdelset(&setSig, SIGTERM);                //free only SIGTERM
     sigprocmask(SIG_SETMASK, &setSig, NULL);
 
-    //setto handler in caso di sigterm (ricorda che prima dobbiamo aprire fifo, memoria e semafori, altrimenti alla chiusura non si chiude tutto bene)
     if(signal(SIGTERM, signalsHandler) == SIG_ERR) 
-        printf("\nProblema\n");
+        printf("\nProblem setting Sigterm Handler\n");
 
-    // create a semaphore 
-    printf("<Server> creating a semaphore...\n");
-    semid = create_sem_set(SEM_KEY);
+    /************* SEMAPHORE *************/
+    printf("<Server> Creating a semaphore and setting to 0...\n");
+    semid = createSemSet(SEM_KEY);
 
-    //setto il semaforo a 0
-    printf("<Server> inizialize the semaphore...\n");
-    semOp(semid, 0, 0);
+    /************* SHARED MEMORY *************/
+    size = sizeof(struct keyTable) * TABLE_SIZE;
 
-    //-----CREAZIONE MEM CONDIVISA -----
-    size_t size = sizeof(struct keyTable) * TABLE_SIZE;
-
-    //allocate a shared memory segment
-    printf("<Server> allocating a shared memory segment...\n");
+    printf("<Server> Allocating a shared memory segment...\n");
     shmidServer = alloc_shared_memory(SHM_KEY, size);
-    
-    // nel main non serve!!!!
-    // attach the shared memory segment, ho ottenuto il puntantore alla zona di memoria condivisa
-    //printf("<Server> attaching the shared memory segment...\n");    
-    table = (struct keyTable*)get_shared_memory(shmidServer, 0);
+      
+    table = (struct keyTable*)get_shared_memory(shmidServer, 0);    //getting pointer table sh mem
 
-    //rilascio il semaforo +1 V(MUTEX) (serve???)
-    semOp(semid, 0, 1);
+    vMutex(semid, 0); 
     
+    //Server's pid
+    printf("<Server> Server's PID: %i\n", getpid());
 
-    // -------STAMPO PID PADRE --------
-    printf("PID padre: %i\n",getpid());
-    //----- CREAZIONE KEYMANAGER ----
-    keyManager = fork();        //keyManager è globale
-    
+    /************* FORK *************/
+    keyManager = fork();    
 
-    switch(keyManager)
+    /************* MAIN PROGRAM *************/
+    switch(keyManager)  
     {
         case -1:
         {
-            printf("ERRORE FORK() !\n");
+            printf("\nError fork\n");
             break;
         }
-        case 0:     //figlio
+        case 0:     //keyManager
         {
-            printf("PID figlio: %i\n",getpid());
-            sigdelset(&setSig, SIGALRM);    //non blocca sigalarm
-
-            /*The last argument, oldset, is used to return information about the old process signal mask. 
-            If you just want to change the mask without looking at it, pass a null pointer as the oldset argument. */
-            sigprocmask(SIG_SETMASK, &setSig, NULL); 
-
-            printf("\n - Imposto un timer di %i secondi finchè non arriva sigterm\n", TIME_ALARM);
-
-            if(signal(SIGALRM, signalsHandler) == SIG_ERR) 
-                printf("\nProblema\n");
-
-            alarm(TIME_ALARM);
-
-            while(1)            
-                pause(); //wait unitl a signal come, suspend thread
-
+            keyManagerFun(setSig);
             break;
         }
-        default:    //padre
-        {
-            do
-			{
-                printf("<Server> waiting for a Request...\n");
-                // Read a request from the FIFO
-                byteRead = read(serverFIFO, &clientRequest, sizeof(struct Request));
-
-                // Check the number of bytes read from the FIFO
-                if(byteRead == -1) 
-                {
-                    printf("<Server> it looks like the FIFO is broken\n");
-                } 
-                else if (byteRead != sizeof(struct Request) || byteRead == 0)
-                    printf("<Server> it looks like I did not receive a valid request\n");
-                else 
-                {
-                    //P(MUTEX)
-                    semOp(semid, 0, -1);   
-                    key = updateTable(clientRequest, usedKeys, TABLE_SIZE, USED_KEY_ARRAY_SIZE);
-                    //mollo semaforo +1
-                    //V(MUTEX)
-                    semOp(semid, 0, 1);
-
-                    sendResponse(&clientRequest, key);
-                }
-
-            }
-            while (byteRead != -1);
+        default:    //server
+        {            
+            serverFun(clientRequest, usedKeys);
             break;
         }
     }    
@@ -229,50 +140,99 @@ int main (void)
     return 0;
 }
 
-//////////// FUNCTIONS IMPLEMENTATIONS ///////////////////
+/************* FUNCTIONS IMPLEMENTATIONS *************/
 
-void quit() //FARE LE FUNZIONI CON IL CONTROLLO INCORPORATO
+void keyManagerFun(sigset_t setSig)
 {
-    //////// FIFO ////////
-    // Close the FIFO
-    if (serverFIFO != 0 && close(serverFIFO) == -1)
-        printf("close failed\n");
+    printf("<Key Manager> KeyManager's PID: %i\n", getpid());
+    sigdelset(&setSig, SIGALRM);                //free SIGALRM only for keymanager (inherits parent's mask)
+    sigprocmask(SIG_SETMASK, &setSig, NULL);    //just change mask
 
-    if (serverFIFO_extra != 0 && close(serverFIFO_extra) == -1)
-        printf("close failed\n");
+    printf("<Key Manager> Setting a timer of %i sec\n", TIME_ALARM);
 
-    // Remove the FIFO
-    if (unlink(path2ServerFIFO) != 0)
-        printf("unlink failed\n");
+    if(signal(SIGALRM, signalsHandler) == SIG_ERR)             
+        printf("\nProblem setting Sigalarm Handler\n");
+
+    alarm(TIME_ALARM);
+
+    while(1)            
+        pause();                                //wait unitl a signal come, suspend thread
+}
+
+void serverFun(struct Request clientRequest, unsigned int usedKeys[])
+{
+    int byteRead = -1;
+    unsigned int key = 0;
+
+    do
+    {
+        printf("<Server> Waiting for a Request...\n");                
+        byteRead = read(serverFIFO, &clientRequest, sizeof(struct Request));
+
+        // Check the number of bytes read from the FIFO
+        if(byteRead == -1) 
+        {
+            printf("<Server> Error reading FIFO\n");
+        } 
+        else if (byteRead != sizeof(struct Request) || byteRead == 0)
+            printf("<Server> It looks like I did not receive a valid request\n");
+        else 
+        {
+            pMutex(semid, 0);   
+            key = updateTable(clientRequest, usedKeys, TABLE_SIZE, USED_KEY_ARRAY_SIZE);
+            vMutex(semid, 0);
+
+            sendResponse(&clientRequest, key);
+        }
+    }
+    while (byteRead != -1);
+}
+
+void quit()
+{
+    /************* FIFO *************/
+    closeFifos();   //both
+    removeFifo();
     
-    //////// SHARED MEMORY /////////
-
+    /************* SHARED MEMORY *************/ 
     free_shared_memory(table); 
     remove_shared_memory(shmidServer);
-    remove_semaphore(semid);   
+
+    /************* SEMAPHORE *************/ 
+    removeSemaphore(semid);   
+}
+
+void closeFifos()
+{
+    if (serverFIFO != 0 && close(serverFIFO) == -1)
+        printf("Close failed\n");
+
+    if (serverFIFO_extra != 0 && close(serverFIFO_extra) == -1)
+        printf("Close failed\n");
+}
+
+void removeFifo()
+{
+    if (unlink(path2ServerFIFO) != 0)
+        printf("Unlink failed\n"); 
 }
 
 unsigned int updateTable(struct Request request, unsigned int usedKeys[], int tableSize, int usedKeysSize)
 {
     unsigned int key = 0;
-    int i = 0;
-    // forse qui o forse in isuniquekey
-    //-1 sem
-    //prendo il semaforo
-    //cerco di prendere il semaforo con -1
+    int i = 0;    
     
-    // ---- CREAZIONE CHIAVE -----
+    /************* KEY GENERATION *************/
     do
     {
         if(isServiceValid(request.service))
-            key = keyEncrypter(request.service);  //calls keyEncrypter and returns the key
+            key = keyEncrypter(request.service);    //calls keyEncrypter and returns the key
         else
-            return 0;   //service not valid, key = 0
+            return 0;                               //service not valid, key = 0
     }
-    while(!isUniqueKey(key, usedKeys, tableSize, usedKeysSize)); //funzione che checkka in memoria condivisa e torna un bool per vedere se la chiave esiste
-
-    //qua siamo sicuri che la chiave è univoca
-    //la inserisco nella tabella con timestamp e id
+    while(!isUniqueKey(key, usedKeys, tableSize, usedKeysSize));
+    
+    /************* INSERT KEY IN SHMEM TABLE *************/
     for(i = 0; i < tableSize; i++)
     {
         if(table[i].key == 0)
@@ -285,10 +245,12 @@ unsigned int updateTable(struct Request request, unsigned int usedKeys[], int ta
     }
 
     if(i == tableSize)
-        printf("MEMORIA ESAURITA\n");    
-    else
     {
-        //la inserisco nell'array delle chiavi create:
+        printf("Not empty spaces available\n");    
+    }
+    else
+    {        
+        /************* INSERT KEY IN ARRAY OF GENERATED KEYS *************/
         for(i = 0; i < usedKeysSize; i++)
         {
             if(usedKeys[i] == 0)
@@ -314,14 +276,14 @@ bool isUniqueKey(unsigned int key, unsigned int usedKeys[], int tableSize, int u
 {
     int i = 0;
 
-    //scorro l'array delle chiavi create:
+    //check if key was already generated
     for(i = 0; i < usedKeysSize; i++)
     {
         if(usedKeys[i] == key)
             return false;
     }
 
-    //scorro tutta la memoria condivisa
+    //check if key is already in shmem
     for(i = 0; i < tableSize; i++)
     {
         if(table[i].key == key)
@@ -338,39 +300,34 @@ void sendResponse(struct Request *request, unsigned int key)
     char path2ClientFIFO [256];
     int byteWrite = 0;
 
-    // make the path of client's FIFO    
+    // Make the path of client's FIFO    
     sprintf(path2ClientFIFO, "%s%s", baseClientFIFO, request->id);
 
-    printf("<Server> opening FIFO %s...\n", path2ClientFIFO);
-    // Open the client's FIFO in write-only mode
-    clientFIFO = open(path2ClientFIFO, O_WRONLY);  //sola scrittura
+    printf("<Server> Opening FIFO %s...\n", path2ClientFIFO);
+    clientFIFO = open(path2ClientFIFO, O_WRONLY);
     
     if (clientFIFO == -1) 
-    {
-        printf("<Server> open failed\n");
-        return;
-    }
+        printf("<Server> Open failed\n");
 
     // Prepare the response for the client
     response.key = key;
 
-    printf("<Server> sending a response\n");
-    // Write the Response into the opened FIFO
+    printf("<Server> Sending a response\n");
     byteWrite = write(clientFIFO, &response, sizeof(struct Response));
         
     // Check the number of bytes written to the FIFO
     if (byteWrite == -1) 
     {
-        printf("<Server> write failed\n");
+        printf("<Server> Write failed\n");
     } 
     else if (byteWrite != sizeof(struct Response) || byteWrite == 0)
     {
-        printf("<Server> it looks like I can't write all the fields\n");
+        printf("<Server> It looks like I can't write all the fields\n");
     }
 
     // Close the FIFO client
     if(close(clientFIFO) != 0)
-        printf("<Server> close failed\n");
+        printf("<Server> Close failed\n");
 }
 
 bool isServiceValid(char *str)
@@ -383,7 +340,6 @@ bool isServiceValid(char *str)
     return false;
 }
 
-
 void toUpperCase(char *str)
 {
     char upper[DIM_STRING + 1] = {""};
@@ -391,7 +347,7 @@ void toUpperCase(char *str)
 
     while(str[i] != '\0')
     {
-        upper[i] = toupper(str[i]);	//stringa maiuscola
+        upper[i] = toupper(str[i]);
         i++;
     }
     upper[i] = '\0';
@@ -418,164 +374,37 @@ unsigned int keyEncrypter(char *service)
     return key;
 }
 
-/*
-    Service decrypter
-
-    Param: the key that needs to be decrypted
-    Return: the service's respective mask
-
-    The function takes the key, and uses the bitwise operation AND 
-    to decrypt it. 
-    If the mask is equals to the result, then the service is the mask itself.
-
-    Note that it needs to be in that order (from the highest to the lowest) in order to work!
-*/
-int keyDecrypter(unsigned int key)
-{
-    if((key & INVIA_MASK) == INVIA_MASK)
-    {
-        return INVIA_MASK;
-    }
-    else if((key & SALVA_MASK) == SALVA_MASK)
-    {
-        return SALVA_MASK;
-    }
-    else if((key & STAMPA_MASK) == STAMPA_MASK)
-    {
-        return STAMPA_MASK;
-    }
-    else
-        return 0;
-}
-
-int create_sem_set(key_t semkey) 
-{
-    // Create a semaphore set with 1 semaphore
-    int semid = semget(semkey, 1, IPC_CREAT | S_IRUSR | S_IWUSR);   //IPC_CREAT: Create entry if key does not exist
-                                                                    //S_IRUSR: read for owner
-                                                                    //S_IWUSR: write for owner
-    if (semid == -1)
-        printf("semget failed\n");
-
-    // Initialize the semaphore set
-    union semun arg;
-    arg.val = 0;
-
-    if (semctl(semid, 0, SETVAL, arg) == -1)
-        printf("semctl SETALL failed\n");
-
-    return semid;
-}
-
-void semOp (int semid, unsigned short sem_num, short sem_op) 
-{
-    //struct sembuf sop = {.sem_num = sem_num, .sem_op = sem_op, .sem_flg = 0}; //assegnamento
-    struct sembuf sop;
-
-    sop.sem_num = sem_num;  //passa; numero del semaforo dentro array dei semafori
-    sop.sem_op = sem_op;    //passa; operation to be performed
-    sop.sem_flg = 0;        //  
-
-    if (semop(semid, &sop, 1) == -1)
-        printf("semop failed\n");
-}
-
-void remove_semaphore(int semid)
-{
-    if(semctl(semid, 0, IPC_RMID, NULL) == -1)
-        printf("Error closing semaphore\n");
-}
-
-// sta dentro la libreria shared_memory.h/c
-int alloc_shared_memory(key_t shmKey, size_t size) 
-{
-    /*
-        get, or create, a shared memory segment
-
-        param1: key della mem condivsa
-        param2: specifica la size che dobbiamo allocare.
-                se usiamo shmget per allocare memoria già esistente (quindi una get)
-                allora questa non deve superare le dimensione della mem già allocata
-        param3: flag per la creazione della mem
-                se la mem esiste già, si usano per un check sulla mem condivisa
-    */
-    int shmid = shmget(shmKey, size, IPC_CREAT | S_IRUSR | S_IWUSR);
-    if (shmid == -1)
-        printf("shmget failed\n");
-
-    return shmid;
-}
-
-void *get_shared_memory(int shmid, int shmflg) 
-{ 
-    /*
-        attach the shared memory
-        torna il puntatore all'ind di mem al quale la mem condivisa si è attaccata
-        o -1 se ci sono errori
-    
-        param 1: key della mem condivisa (sempre quella)
-        param 2: NULL: sceglie il kernel dove mettere il nuovo pezzo. Questo param e il
-                       successivo sono ignorati
-                 diverso da NULL: lo diciamo noi (attenzione, meno portabile!)
-        param 3: flag che specificano i permessi, ma noi qua non abbiamo flag 
-                 qua è 0, perchè tanto il precedente è NULL e viene ignorato
-    */
-    void *ptr_sh = shmat(shmid, NULL, shmflg);
-    if (ptr_sh == (void *)-1)
-        printf("shmat failed\n");
-
-    return ptr_sh;
-}
-
-void free_shared_memory(void *ptr_sh) 
-{
-    // detach the shared memory segments
-    if (shmdt(ptr_sh) == -1)
-        printf("shmdt failed\n");
-}
-
-void remove_shared_memory(int shmid) 
-{
-    // delete the shared memory segment
-    if (shmctl(shmid, IPC_RMID, NULL) == -1)
-        printf("shmctl failed\n");
-}
-
 void signalsHandler(int sig) 
 {
     switch(sig)
     {
-        case SIGALRM:   //è solo il figlio
+        case SIGALRM:                       //only keyManager
         {
-			//P(MUTEX)  ***prendiamo il semaforo!!! importante!!!
-    		semOp(semid, 0, -1);
+            pMutex(semid, 0);
 
-            printf("Pid che chiama sig alarm (deve essere quello del figlio!!): %i\n", getpid()); //deve essere quello del figlio!!!
+            printf("<Key Manager> KeyManager (%i) calls alarm\n", getpid());
 
             checkTableEvery30Sec(TABLE_SIZE);        
 
             alarm(TIME_ALARM);
 
-            if(signal(SIGALRM, signalsHandler) == SIG_ERR)
-            {
-                printf("\nProblema");
-            } 
+            if(signal(SIGALRM, signalsHandler) == SIG_ERR)                   
+                printf("\nProblem setting Sigalarm Handler\n"); 
 
-            //V(MUTEX)
-    		semOp(semid, 0, 1);    
+            vMutex(semid, 0);
 
             break;
         }
         case SIGTERM:
         {
-            if(keyManager == 0) //figlio
+            if(keyManager == 0)             //keyManager
             {
         	    exit(0);   
             }
-            else            //padre
+            else                            //server
             {          
-                kill(keyManager, SIGTERM);    //figlio ko
-                quit(); // close FIFO, shared memory and semaphore.
+                kill(keyManager, SIGTERM); 
+                quit();                     // close FIFO, shared memory and semaphore.
                 exit(0);
             }
 
@@ -584,14 +413,13 @@ void signalsHandler(int sig)
     }         
 }
 
-
 void checkTableEvery30Sec(int size)
 {
     int i = 0;
 
     for(i = 0; i < size; i++)
     {
-        //elimino la chiave se sono passati 5 minuti
+        //deletes the key if 5 minutes are passed
         if((table[i].timestamp < time(NULL)-300) && (table[i].key != 0))
         {
             strcpy(table[i].user, "");
