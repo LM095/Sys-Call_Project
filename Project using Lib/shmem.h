@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <sys/shm.h>
 #include <stdlib.h>
 #include <sys/stat.h>

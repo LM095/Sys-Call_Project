@@ -105,9 +105,9 @@ int main (void)
     size = sizeof(struct keyTable) * TABLE_SIZE;
 
     printf("<Server> Allocating a shared memory segment...\n");
-    shmidServer = alloc_shared_memory(SHM_KEY, size);
+    shmidServer = allocSharedMemory(SHM_KEY, size);
       
-    table = (struct keyTable*)get_shared_memory(shmidServer, 0);    //getting pointer table sh mem
+    table = (struct keyTable*)getSharedMemory(shmidServer, 0);    //getting pointer table sh mem
 
     vMutex(semid, 0); 
     
@@ -195,8 +195,8 @@ void quit()
     removeFifo();
     
     /************* SHARED MEMORY *************/ 
-    free_shared_memory(table); 
-    remove_shared_memory(shmidServer);
+    freeSharedMemory(table); 
+    removeSharedMemory(shmidServer);
 
     /************* SEMAPHORE *************/ 
     removeSemaphore(semid);   

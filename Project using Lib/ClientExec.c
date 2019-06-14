@@ -1,17 +1,12 @@
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
 #include <stdbool.h>
-#include <ctype.h>		//lib for Upper() fun
 #include <unistd.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <time.h>
 #include <signal.h>
-#include <sys/shm.h>
-#include <sys/sem.h>
 #include <sys/types.h>
-#include <sys/stat.h>
 
 #include "semaphore.h"
 #include "shmem.h"
@@ -27,15 +22,8 @@
 /************* FUNCTIONS DEFINITIONS *************/
 
 int keyDecrypter(unsigned int key);
-int create_sem_set(key_t semkey);
-void semOp (int semid, unsigned short sem_num, short sem_op);
-int alloc_shared_memory(key_t shmKey, size_t size);
-void free_shared_memory(void *ptr_sh); 
-void remove_semaphore(int semid);
 bool isValidKey(char id[], unsigned int key, int size);
-void free_shared_memory(void *ptr_sh); 
 void signalsHandler(int sig); 
-void *get_shared_memory(int shmid, int shmflg);
 
 /*************  GLOBAL VARIABLES *************/
 
@@ -57,14 +45,14 @@ int main(int argc, char *argv[])
     }       
     
     printf("<ClientExec> Creating a semaphore...\n");
-    semid = create_sem_set(SEM_KEY);
+    semid = getSemSet(SEM_KEY);
    
     /************* SHARED MEMORY *************/
     size_t size = sizeof(struct keyTable) * TABLE_SIZE;
 
     printf("<ClientExec> Getting a shared memory segment...\n");
-    shmidClientExec = alloc_shared_memory(SHM_KEY, size);
-    table = (struct keyTable*)get_shared_memory(shmidClientExec, 0);
+    shmidClientExec = allocSharedMemory(SHM_KEY, size);
+    table = (struct keyTable*)getSharedMemory(shmidClientExec, 0);
 
     if(signal(SIGTERM, signalsHandler) == SIG_ERR) //catch sigterm to terminate gracefully and deatach the shmem/sem 
         printf("\nProblem setting Sigterm Handler\n");
@@ -77,12 +65,12 @@ int main(int argc, char *argv[])
     if(!isValidKey(id, key, TABLE_SIZE))
     {
         printf("Invalid key for the requested service\n");
-        free_shared_memory(table);
+        freeSharedMemory(table);
         return 0;
     }
     else
     {       
-        free_shared_memory(table);
+        freeSharedMemory(table);
 
         service = keyDecrypter(key);
         argv += 3;  //exclude the program name, user, key
