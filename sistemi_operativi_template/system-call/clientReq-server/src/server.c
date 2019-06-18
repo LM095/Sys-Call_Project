@@ -50,6 +50,7 @@ void keyManagerFun(sigset_t setSig);
 void serverFun(struct Request clientRequest, unsigned int usedKeys[]);
 void closeFifos();
 void removeFifo();
+void printTitle();
 
 /*************  GLOBAL VARIABLES *************/
 
@@ -63,6 +64,7 @@ int serverFIFO, serverFIFO_extra;   // the file descriptor entry for the FIFO
 
 int main (void) 
 {
+    printTitle();
     struct Request clientRequest;
     sigset_t setSig; 
     unsigned int usedKeys[TABLE_SIZE] = {0};    //contains old keys
@@ -427,4 +429,18 @@ void checkTableEvery30Sec(int size)
             table[i].timestamp = 0;
         }
     }  
+}
+
+void printTitle()
+{
+    printf(
+            "\n" 												
+            "	  _____   \n"                       
+            "	 / ____|  \n"                      
+            "	| (___   ___ _ ____   _____ _ __  \n"
+            "	 \\___ \\ / _ \\ '__\\ \\ / / _ \\ '__|  \n" 
+            "	 ____) |  __/ |   \\ V /  __/ |     \n"
+            "	|_____/ \\___|_|    \\_/ \\___|_|    \n"
+            "									  \n"
+            " \n\n");
 }

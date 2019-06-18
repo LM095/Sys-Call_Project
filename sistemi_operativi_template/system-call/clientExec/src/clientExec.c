@@ -24,6 +24,7 @@
 int keyDecrypter(unsigned int key);
 bool isValidKey(char id[], unsigned int key, int size);
 void signalsHandler(int sig); 
+void printTitle();
 
 /*************  GLOBAL VARIABLES *************/
 
@@ -34,6 +35,7 @@ struct keyTable *table;
 
 int main(int argc, char *argv[])
 {
+    printTitle();
     char id[DIM_STRING + 1] = {0};
     unsigned int key = 0;
     int service = 0;
@@ -177,4 +179,17 @@ void signalsHandler(int sig)
             break;
         }
     }         
+}
+
+void printTitle()
+{
+    printf(
+		"\n" 												
+		"   _____ _ _            _     ______               	  \n"
+		"  / ____| (_)          | |   |  ____|                    \n"  
+		" | |    | |_  ___ _ __ | |_  | |__  __  _____  ___       \n"  
+		" | |    | | |/ _ \\ '_ \\| __| |  __| \\ \\/ / _ \\/ __| \n"  
+		" | |____| | |  __/ | | | |_  | |____ >  <  __/ (__.      \n"   
+		"  \\_____|_|_|\\___|_| |_|\\__| |______/_/\\_\\___|\\___|\n"         
+		" \n\n");
 }

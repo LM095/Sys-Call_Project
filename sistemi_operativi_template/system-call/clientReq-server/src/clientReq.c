@@ -45,7 +45,7 @@ int main(void)
 	/************* DATA INPUT *************/
 	printTitle();
 	stringInput("Hi, I'm ClientReq program!\nInsert your ID: \n", id, DIM_STRING);
-	stringInput("\nInsert the desired service: \n-Stampa\n-Salva\n-Invia\n", service, DIM_STRING);
+	stringInput("\nInsert the desired service: \n-Stampa\n-Salva\n-Invia\n\n", service, DIM_STRING);
 	
 	strncpy(clientRequest.id,id, DIM_STRING);
 	strncpy(clientRequest.service,service, DIM_STRING);
@@ -56,7 +56,7 @@ int main(void)
     if (mkfifo(path2ClientFIFO, S_IRUSR | S_IWUSR | S_IWGRP) == -1)	
 		printf("Failed making Fifo\n");    		
 	
-	printf("<Client> FIFO %s created!\n", path2ClientFIFO);
+	printf("\n<Client> FIFO %s created!\n", path2ClientFIFO);
 
 	printf("<Client> Opening FIFO %s...\n", path2ServerFIFO);
     serverFIFO = open(path2ServerFIFO, O_WRONLY);
@@ -77,7 +77,7 @@ int main(void)
         printf("Failed reading\n");
 
 	/************* KEY RECEIVED *************/
-    printf("<Client> Server sent you the key: %u\n", serverResponse.key);
+    printf("\n<Client> Server sent you the key: %u\n", serverResponse.key);
 
 	/************* CLOSING FIFO *************/
 	closeFifos(serverFIFO, clientFIFO);
