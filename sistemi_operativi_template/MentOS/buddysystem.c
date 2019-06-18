@@ -170,7 +170,7 @@ void bb_free_pages(zone_t *zone, page_t *page, unsigned int order)
 	list_head_add(&(coalesced->lru), &(area->free_list));
 
 	// Increase the number of free blocks of the free_area.
-	(area->nr_free)++; //boh?
+	(area->nr_free)++;
 
 	buddy_system_dump(zone);
 }

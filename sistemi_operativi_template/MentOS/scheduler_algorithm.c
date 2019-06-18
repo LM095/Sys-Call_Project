@@ -20,7 +20,7 @@ task_struct *pick_next_task(runqueue_t *runqueue, time_t delta_exec)
 	//==== Implementatin of the Round-Robin Scheduling algorithm ============
 
 	//nNode = next(c)
-	struct list_head *nNode = runqueue->curr->run_list.next;
+	list_head *nNode = runqueue->curr->run_list.next;
 	
 	//if isHead(L, nNode) (skip the head)
 	if(nNode == &runqueue->queue)
@@ -39,10 +39,12 @@ task_struct *pick_next_task(runqueue_t *runqueue, time_t delta_exec)
 	// Get its static priority.
 	time_t min = next->se.prio;
 
-	list_head *it;
+	list_head *it = NULL;
+	task_struct *entry = NULL;
+	
 	// Inter over the runqueue to find the task with the smallest priority value
 	list_for_each (it, &runqueue->queue) {
-		task_struct *entry = list_entry(it, struct task_struct, run_list);	//itera sulla lista edi strutture
+		entry = list_entry(it, struct task_struct, run_list);
 		// Check entry has a lower priority
 		if (entry->se.prio <= min) {	//note to put <= (otherwise, it won't go on due to same priority)
 			next = entry;
@@ -73,10 +75,14 @@ task_struct *pick_next_task(runqueue_t *runqueue, time_t delta_exec)
 	
 	time_t min = runqueue->curr->se.vruntime;
 
-	list_head *it;
+	list_head *it = NULL;
+	task_struct *entry = NULL;
+
+	next = runqueue->curr;
+	
 	// Inter over the runqueue to find the task with the smallest priority value
 	list_for_each (it, &runqueue->queue) {
-		task_struct *entry = list_entry(it, struct task_struct, run_list);
+		entry = list_entry(it, struct task_struct, run_list);
 		// Check entry has a lower priority
 		if (entry->se.vruntime <= min) {	//note to put <= (otherwise, it won't go on due to same priority)
 			next = entry;
