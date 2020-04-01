@@ -15,12 +15,12 @@ We had to create an application for the management of the following system servi
 - **Send**: program that performs the sending service.
 
 ## Topics used:
-> FIFO
-> Shared Memory
-> Signals
-> Semaphore
-> Hash Function
-> Message Queues
+- [x] FIFO
+- [x] Shared Memory
+- [x] Signals
+- [x] Semaphore
+- [x] Hash Function
+- [x] Message Queues
 
 ## Authors
 
